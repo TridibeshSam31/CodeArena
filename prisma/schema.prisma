@@ -18,6 +18,7 @@ model Submission{
   id  String @id @default(uuid())
   code String
   language String 
+  problemId Int?
   stdin String?
   status String @default("queued")
   output String?
