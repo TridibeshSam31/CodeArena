@@ -1,10 +1,17 @@
 //creating connection to database using prisma client
 
-import {PrismaClient} from "@prisma/client"
+import { PrismaClient } from "@prisma/client"
 
-const globalPrisma = global as unknown as {prisma: PrismaClient}
+const globalForPrisma = global as unknown as {
+  prisma: PrismaClient | undefined
+}
 
-export const prisma = globalPrisma.prisma || new PrismaClient()
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    log: ["query"]
+  })
 
-if (process.env.NODE_ENV !== "production") globalPrisma.prisma = prisma
-
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma
+}
