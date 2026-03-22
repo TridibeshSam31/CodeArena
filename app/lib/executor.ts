@@ -18,7 +18,7 @@ import { execSync } from "child_process";
 import fs from "fs"
 import path from "path"
 import os from "os"
-import { tryCatch } from "bullmq";
+
 
 
 const codeExecutionTimeout = 5000; //5 seconds
