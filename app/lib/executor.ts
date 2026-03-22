@@ -30,14 +30,14 @@ interface ExecuteCodeParams {
 }
 
 
-function executeCode({code,language,input}:ExecuteCodeParams){
+export default function executeCode({code,language,input}:ExecuteCodeParams){
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(),"codearena-"))
 
     try{
         switch(language){
             case "cpp":
                 return executeCpp(code,input,tempDir)
-            case "c";
+            case "c":
                 return executeC(code,input,tempDir)
             case "python":
                 return executePython(code,input,tempDir)
@@ -153,10 +153,88 @@ function executeC(code:string,input:string,tempDir:string){
 
     //Execute 
     try {
-        const stdout = 
+        const stdout = execSync(`"${outputFile}" < "${inputFile}"`, {
+        timeout: codeExecutionTimeout,
+        stdio: ["pipe", "pipe", "pipe"],
+        shell: '/bin/sh',
+        })
+        return{
+            success:true,
+            stdout:stdout.toString(),
+            stderr:"",
+            verdict:null
+        }
         
-    } catch (error) {
+    } catch (error:any) {
+        if (error.killed) {
+      return {
+        success: false,
+        stdout: "",
+        stderr: "Time Limit Exceeded",
+        verdict: "Runtime Error",
+      };
+    }
+    return {
+      success: false,
+      stdout: error.stdout ? error.stdout.toString() : "",
+      stderr: error.stderr ? error.stderr.toString() : "Runtime error",
+      verdict: "Runtime Error",
+    };
         
     }
 
+}
+
+//python execution
+function executePython(code:string,input:string,tempDir:string){
+    const inputFile = path.join(tempDir,"input.txt")
+    const sourceFile = path.join(tempDir,"code.py")
+
+    fs.writeFileSync(inputFile,input)
+    fs.writeFileSync(sourceFile,code)
+
+    try {
+        const stdout = execSync(`python3 "${sourceFile}" < "${inputFile}"`, {
+        timeout: codeExecutionTimeout,
+        stdio: ["pipe", "pipe", "pipe"],
+        shell: '/bin/sh',
+        })
+        return{
+            success:true,
+            stdout:stdout.toString(),
+            stderr:"",
+            verdict:null
+        }
+        
+    } catch (error:any) {
+        if (error.killed) {
+        return {
+        success: false,
+        stdout: "",
+        stderr: "Time Limit Exceeded",
+        verdict: "Runtime Error",
+        }
+
+     }
+
+     const stderr = error.stderr ? error.stderr.toString() : "";
+    // Python syntax errors are "Compilation Errors" in contest context
+    if (stderr.includes("SyntaxError")) {
+      return {
+        success: false,
+        stdout: "",
+        stderr,
+        verdict: "Compilation Error",
+      };
+    }
+
+    return {
+      success: false,
+      stdout: error.stdout ? error.stdout.toString() : "",
+      stderr,
+      verdict: "Runtime Error",
+    };
+        
+    }
+ 
 }
