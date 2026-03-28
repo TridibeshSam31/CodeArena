@@ -517,7 +517,7 @@ MIT License — feel free to fork, modify, and use in your own projects.
 
 <div align="center">
 
-**Built with ❤️ by a developer who wanted to understand how Codeforces actually works.**
+**Built with ❤️ by a developer who wanted to understand how Codeforces/Leetcode like platforms actually works.**
 
 ⭐ Star this repo if you found it useful!
 
