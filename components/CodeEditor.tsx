@@ -1,4 +1,5 @@
 //Monaco editor here 
+"use client"
 import React from 'react'
 import Editor from "@monaco-editor/react"
 
