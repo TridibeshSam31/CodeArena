@@ -10,6 +10,14 @@ export default function StdinInput({value,onchange}:stdinputProps) {
     //ek box bnana hai jisme likha hoga Enter Input for code aur usko align krna hai yaa toh neeche ya fir right side me above output code box
     return (
         <div className="border-t border-indigo-500/10">
+
+            {/*Header for standard input */}
+            <div className="flex ">
+                <span className="text-xl text-white ">Standard Input</span>
+            </div>
+
+            {/*Text area for standard input */}
+
             <Textarea value={value}
             onChange={(e) => onchange(e)}
             placeholder="Enter Input for code"
