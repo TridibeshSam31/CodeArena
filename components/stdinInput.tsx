@@ -1,30 +1,38 @@
-import {Textarea} from "./ui/textarea";
+"use client"
 
+import React from "react";
 
-interface stdinputProps{
-    value:string;
-    onChange: (value: string) => void;
+interface StdInputProps{
+    stdin:String;
+    onchange:(stdin:String) => void;
 }
 
-export default function StdinInput({value,onChange}:stdinputProps) {
-    //ek box bnana hai jisme likha hoga Enter Input for code aur usko align krna hai yaa toh neeche ya fir right side me above output code box
-    return (
-        <div className="border-t border-indigo-500/10">
 
-            {/*Header for standard input */}
-            <div className="flex ">
-                <span className="text-xl text-white ">Standard Input</span>
+
+const StdinInput = ({stdin,onchange}:StdInputProps) => {
+    return(
+        <div className="arena-sub-panel arena-stdin-panel">
+        <div className="arena-panel-header">
+            <div className="arena-panel-dots">
+                <span /><span /><span />
+
             </div>
+            <span className="arena-panel-title">stdin</span>
+            <span className="arena-panel-badge">input</span>
 
-            {/*Text area for standard input */}
-
-            <Textarea value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder="Enter Input for code"
-            spellCheck={false}
-            className="w-full px-4 py-2 bg-dark-500 text-white font-mono text-xl border-none outline-none resize-none focus-visible:ring-offset-0 placeholder:text-slate-600 h-24 rounded-none"
-            />
         </div>
+        <textarea
+        className="arena-stdin"
+        //@ts-ignore
+        value={stdin}
+        onChange={(e) => onchange(e.target.value)}
+        placeholder="Enter input for your program..."
+        spellCheck={false}
+        />
 
+        </div>
     )
 }
+
+
+export default StdinInput;

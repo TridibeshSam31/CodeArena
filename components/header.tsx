@@ -1,26 +1,39 @@
-import React from 'react'
+"use client";
+import React from "react";
 
-const Header = () => {
-  return (
-    <header className='flex justify-between items-center px-6 py-3 border-b bg-gray-900'>
+type SubmissionStatus = "idle" | "pending" | "running" | "completed" | "error";
 
-
-      {/*left side */}
-      <div className='flex items-center gap-3'>
-        <div className='w-9 h-9 bg-blue-500'> Logo   </div>
-       <div>
-         <h1 className='text-lg font-bold text-white'>CodeArena</h1>
-         <p className='text-xs text-gray-400'>Run Your code Smoothly</p>
-       </div>
-      </div>
-
-     {/*now status i.e online or offline , Right Side */}
-     <div className='flex items-center gap-2 text-sm text-gray-400'>
-      <span></span>
-      <span >Online</span>
-     </div>
-    </header>
-  )
+interface HeaderProps {
+  status: SubmissionStatus;
+  execTime: number | null;
 }
 
-export default Header
+const Header = ({ status, execTime }: HeaderProps) => {
+  return (
+    <header className="arena-header">
+      <div className="arena-logo">
+        <span className="arena-logo-bracket">{"{"}</span>
+        <span className="arena-logo-text">CodeArena</span>
+        <span className="arena-logo-bracket">{"}"}</span>
+      </div>
+      <div className="arena-header-center">
+        <div className="arena-status-dot" data-status={status} />
+        <span className="arena-status-text">
+          {status === "idle" && "Ready"}
+          {status === "pending" && "Queued..."}
+          {status === "running" && "Executing..."}
+          {status === "completed" && "Completed"}
+          {status === "error" && "Error"}
+        </span>
+        {execTime && status !== "idle" && (
+          <span className="arena-exec-time">{(execTime / 1000).toFixed(2)}s</span>
+        )}
+      </div>
+      <div className="arena-header-right">
+        <span className="arena-version">v1.0</span>
+      </div>
+    </header>
+  );
+};
+
+export default Header;
