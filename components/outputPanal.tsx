@@ -72,3 +72,6 @@ const OutputPanel = ({output,stderr,status}:OutputPanelProps) => {
 }
 
 
+export default OutputPanel;
+
+
