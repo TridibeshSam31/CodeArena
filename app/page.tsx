@@ -50,16 +50,60 @@ if __name__ == "__main__":
 type SubmissionStatus = "idle" | "pending" | "running" | "completed" | "error";
 
 
-export default function Home(){
+export default function Home() {
   const [language,setLanguage] = useState("cpp")
   const[code,setCode] = useState(DEFAULT_CODE["cpp"])
-  const[input,setInput] = useState("")
+  const[stdin,setStdin] = useState("")
   const[output,setOutput] = useState("")
   const[stderr,setStderr] = useState("")
   const [execTime,setExecTime] = useState<number | null>(null)
   const [langDropOpen, setLangDropOpen] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
+  const [status, setStatus] = useState<SubmissionStatus>("idle");
+
+  const handleLanguageChange = (Lang:string)=>{
+    setLanguage(Lang)
+    setCode(DEFAULT_CODE[Lang])
+    setLangDropOpen(false)
+  }
+
+  const handleSubmit = async () =>{
+    if(status === "running" || status === "pending") {
+      return;
+    }
+
+    setStatus("pending");
+    setOutput("");
+    setStderr("");
+    setExecTime(null);
+    startTimeRef.current = Date.now();
+
+
+
+    try {
+      const res = await fetch("/api/submit",{
+        method:"post",
+        headers:{
+          "Content-Type":"application/json"
+        },
+        body:JSON.stringify({code,language, stdin: stdin || " "})
+      })
+
+      if(!res.ok){
+        const error = await res.json()
+        setStatus("error")
+        setStderr(error.message || "Submission failed");
+      }
+      
+    } catch (error) {
+      setStatus("error")
+      setStderr("Failed to submit code , pls try again");
+    }
+  }
+
+
+
 
 
    return (
