@@ -228,3 +228,58 @@ export default function Home() {
 
 
 }
+
+
+/*
+
+Full map of what is happening in this code or what we are trying to achieve through this code 
+
+
+User clicks RUN
+↓
+handleSubmit()
+↓
+status = pending
+↓
+POST /api/submit
+↓
+backend creates execution job
+↓
+backend returns submissionId
+↓
+frontend starts polling
+↓
+GET /api/submission/id
+↓
+backend says running
+↓
+frontend keeps polling
+↓
+backend finishes execution
+↓
+backend returns output
+↓
+frontend stops polling
+↓
+show result
+
+
+
+
+also about polling mechanism , frontend starts polling backend every 1.2 seconds checking the status of code execution 
+
+but this polling , in order to do polling there are also few steps involved the steps of polling that are required are 
+1.startpolling: when user submits code and we get submissionId we start polling by setting an interval that calls the API to check status every 1.2 seconds
+2.stopPolling: when we get final status from backend (either completed or error) we stop polling by clearing the interval
+3.cleanup: also when component unmounts we need to clear the interval to avoid memory leaks
+4.error handling: if there is any network error during polling we also need to stop polling and show error message to user
+5.status management: we need to manage the status of submission (idle, pending, running, completed, error) to show appropriate UI and prevent multiple submissions at the same time
+6.execTime: we also track execution time by recording start time when submission is made and calculating difference when we get final status from backend
+7.UI updates: based on status we update the UI to show loading state, output, error messages and execution time
+
+
+
+
+
+
+*/
