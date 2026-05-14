@@ -23,6 +23,7 @@
 ## 📌 Table of Contents
 
 - [Overview](#-overview)
+- [Screenshots](#-screenshots)
 - [Architecture](#-architecture)
 - [Features](#-features)
 - [Tech Stack](#-tech-stack)
@@ -45,6 +46,23 @@
 Built for developers who want to ship competitive programming tooling, run internal coding assessments, or learn how real-world judge systems work under the hood.
 
 > This project demonstrates **real-world engineering patterns**: async job queues, worker processes, polling APIs, database-backed state management, sandboxed code execution, and a production-grade monorepo Next.js setup.
+
+---
+
+## 📸 Screenshots
+
+<div align="center">
+
+### C++ Editor
+<img src="public/screenshots/cpp-editor.png" alt="CodeArena C++ Editor" width="800"/>
+
+### Python Editor
+<img src="public/screenshots/python-editor.png" alt="CodeArena Python Editor" width="800"/>
+
+### C Editor
+<img src="public/screenshots/c-editor.png" alt="CodeArena C Editor" width="800"/>
+
+</div>
 
 ---
 
