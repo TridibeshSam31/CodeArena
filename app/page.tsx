@@ -61,7 +61,21 @@ export default function Home() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
   const [status, setStatus] = useState<SubmissionStatus>("idle");
+  
+   const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, []);
 
+  useEffect(() => {
+    return () => stopPolling();
+  }, [stopPolling]);
+
+
+
+   
   const handleLanguageChange = (Lang:string)=>{
     setLanguage(Lang)
     setCode(DEFAULT_CODE[Lang])
@@ -87,7 +101,7 @@ export default function Home() {
         headers:{
           "Content-Type":"application/json"
         },
-        body:JSON.stringify({code,language, stdin: stdin || " "})
+        body:JSON.stringify({code,language, stdin: stdin ?? " "})
       })
 
       if(!res.ok){
@@ -95,14 +109,43 @@ export default function Home() {
         setStatus("error")
         setStderr(error.message || "Submission failed");
       }
+
+
+      const { submissionId } = await res.json();
+
+      pollingRef.current = setInterval(async () => {
+        try {
+          const pollRes = await fetch(`/api/submission/${submissionId}`);
+          const data = await pollRes.json();
+
+          if (data.status === "running") {
+            setStatus("running");
+          }
+
+          if (data.status === "completed" || data.status === "error") {
+            stopPolling();
+            setStatus(data.status);
+            setOutput(data.output || "");
+            setStderr(data.stderr || "");
+            setExecTime(Date.now() - startTimeRef.current);
+          }
+        } catch {
+          stopPolling();
+          setStatus("error");
+          setStderr("Network error while polling");
+        }
+      }, 1200);
+
       
     } catch (error) {
       setStatus("error")
       setStderr("Failed to submit code , pls try again");
     }
   }
+  
 
-
+  const isRunning = status === "pending" || status === "running";
+  const currentLang = LANGUAGES.find((l) => l.id === language)!;
 
 
 
