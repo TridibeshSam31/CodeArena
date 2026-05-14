@@ -34,7 +34,6 @@
 - [API Reference](#-api-reference)
 - [Code Execution Flow](#-code-execution-flow)
 - [Database Schema](#-database-schema)
-- [Roadmap](#-roadmap)
 - [Contributing](#-contributing)
 
 ---
@@ -484,21 +483,6 @@ model Submission {
 "pending" → [Worker picks up] → "running" → [Execution completes] → "completed"
                                                                    → "error"
 ```
-
----
-
-## 🗺️ Roadmap
-
-- [ ] **Problem Set** — Create and manage coding problems with test cases
-- [ ] **Judge Mode** — Auto-evaluate output against expected results (AC/WA/TLE/RE)
-- [ ] **User Auth** — Clerk or NextAuth for user accounts + submission history
-- [ ] **Leaderboard** — Per-problem submission statistics and rankings
-- [ ] **Java Support** — Add `javac` + `java` execution path
-- [ ] **Docker Sandboxing** — Container-level isolation for stronger security
-- [ ] **WebSocket Updates** — Replace polling with real-time push notifications
-- [ ] **Rate Limiting** — Per-IP submission throttling to prevent abuse
-- [ ] **Multiple Test Cases** — Run against N hidden test cases, aggregate verdict
-- [ ] **Code Sharing** — Shareable submission links
 
 ---
 
