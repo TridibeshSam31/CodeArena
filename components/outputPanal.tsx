@@ -34,7 +34,7 @@ const OutputPanel = ({output,stderr,status}:OutputPanelProps) => {
             <span>Run your code to see output</span>
           </div>
         )}
-        {status === "running" && (
+        {(status === "running" || status === "pending") && (
           <div className="arena-output-loading">
             <div className="arena-loader-bars">
               <span /><span /><span /><span /><span />
