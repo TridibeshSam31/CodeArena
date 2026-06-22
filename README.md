@@ -513,7 +513,7 @@ git push origin feat/my-awesome-feature
 
 ## 📄 License
 
-MIT License — feel free to fork, modify, and use in your own projects.
+⚠️ This repository is published for learning and reference purposes. Re-uploading this codebase, removing attribution, or presenting it as your own work is strongly discouraged
 
 ---
 
