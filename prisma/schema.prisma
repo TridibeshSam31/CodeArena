@@ -16,5 +16,5 @@ model Submission {
   output    String?
   stderr    String?
   createdAt DateTime @default(now())
-  problemId Int?
+  problemId Int?  //not needed currently thats for a leetcode type platform not for an online compiler
 }
