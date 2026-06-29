@@ -4,7 +4,7 @@
 
 ![CodeArena Banner](https://img.shields.io/badge/CodeArena-Online_Judge_Platform-blue?style=for-the-badge&logo=code&logoColor=white)
 
-**A blazing-fast, production-grade online code execution engine — run code, submit solutions, and watch results in real-time.**
+**A modern online judge platform with a production-inspired execution architecture — run code, submit solutions, and watch results in real-time.**
 
 [![Next.js](https://img.shields.io/badge/Next.js-15.5-black?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
@@ -23,6 +23,7 @@
 ## 📌 Table of Contents
 
 - [Overview](#-overview)
+- [Engineering Highlights](#-engineering-highlights)
 - [Screenshots](#-screenshots)
 - [Architecture](#-architecture)
 - [Features](#-features)
@@ -44,7 +45,17 @@
 
 Built for developers who want to ship competitive programming tooling, run internal coding assessments, or learn how real-world judge systems work under the hood.
 
-> This project demonstrates **real-world engineering patterns**: async job queues, worker processes, polling APIs, database-backed state management, sandboxed code execution, and a production-grade monorepo Next.js setup.
+> This project demonstrates **backend engineering concepts** including asynchronous job queues, worker processes, isolated code execution, polling-based result delivery, and database-backed state management.
+
+---
+
+## 🎯 Engineering Highlights
+
+- Asynchronous execution pipeline using BullMQ and Redis
+- Separate worker process for code execution
+- Process isolation with execution timeouts and automatic cleanup
+- Persistent submission tracking using PostgreSQL and Prisma
+- Real-time result polling from the client
 
 ---
 
@@ -124,7 +135,7 @@ Built for developers who want to ship competitive programming tooling, run inter
 - 🖥️ **Monaco Editor** — The same editor that powers VS Code, with syntax highlighting, IntelliSense, and language modes for C++, C, and Python
 - ⚡ **Async Execution Pipeline** — Submissions are queued and executed asynchronously via BullMQ workers
 - 📊 **Real-time Status Polling** — Client polls `/api/submission/:id` until execution completes
-- 🔒 **Sandboxed Execution** — Code runs in isolated `child_process` with a hard 5-second timeout
+- 🔒 **Isolated Code Execution** — Executes user code in a separate worker process with execution timeouts, temporary workspaces, and automatic cleanup
 - 🗂️ **Persistent Submission History** — Every run is stored in PostgreSQL with full metadata
 
 ### Supported Languages
@@ -162,14 +173,14 @@ Built for developers who want to ship competitive programming tooling, run inter
 | **Next.js API Routes** | REST endpoints for submission handling |
 | **Prisma ORM** | Type-safe database client + migrations |
 | **PostgreSQL** | Relational database for persistent submission storage |
-| **BullMQ** | Production-grade job queue built on Redis |
+| **BullMQ** | Job queue built on Redis for async task processing |
 | **IORedis** | Redis client for BullMQ connections |
 
 ### Infrastructure
 | Technology | Purpose |
 |-----------|---------|
 | **Redis** | Job queue backing store + BullMQ broker |
-| **`child_process`** | OS-level sandboxed code execution |
+| **`child_process`** | OS-level isolated code execution |
 | **`tsx`** | TypeScript-native worker script runner |
 | **`os.tmpdir()`** | Ephemeral temp dirs for code file isolation |
 
@@ -215,7 +226,7 @@ Client poll returns completed Submission
          └─► Display output/errors in OutputPanel
 ```
 
-### Execution Sandbox (executor.ts)
+### Isolated Code Execution (executor.ts)
 
 Each language has its own execution path:
 
@@ -340,7 +351,7 @@ codearena/
 │   │       └── [id]/
 │   │           └── route.ts      # GET /api/submission/:id — polls submission status
 │   ├── lib/
-│   │   ├── executor.ts           # Sandboxed code execution (C, C++, Python)
+│   │   ├── executor.ts           # Isolated code execution (C, C++, Python)
 │   │   ├── prisma.ts             # Prisma client singleton
 │   │   ├── queue.ts              # BullMQ queue instance
 │   │   └── worker.ts             # BullMQ worker process (run separately)
