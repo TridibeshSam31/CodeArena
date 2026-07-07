@@ -67,6 +67,24 @@ Built for developers who want to ship competitive programming tooling, run inter
 
 ## 🏗️ Architecture
 
+### High-Level Design (HLD)
+
+<div align="center">
+  <img src="public/hld.png" alt="CodeArena High Level Design" width="900"/>
+</div>
+
+The diagram above shows the full end-to-end flow:
+- **User** submits code → passes through **RateLimiter** → enqueued as a job
+- **Redis + BullMQ** power the Queue System with exponential backoff retries
+- Jobs that repeatedly fail are routed to the **Dead Letter Queue**
+- A **Worker** dequeues jobs → runs code in the **nsys code executioner** (sandboxed `child_process`)
+- Execution output is **saved in PostgreSQL**
+- **Frontend** polls `GET /submission/:id` to display real-time results
+
+---
+
+### Detailed Architecture
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        BROWSER (Client)                         │
