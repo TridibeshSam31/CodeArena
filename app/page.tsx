@@ -1,130 +1,140 @@
-"use client"
+"use client";
 
-import React,{useState,useCallback,useEffect,useRef} from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import OutputPanel from "@/components/outputPanal";
 import CodeEditor from "@/components/CodeEditor";
 import StdinInput from "@/components/stdinInput";
 import Header from "@/components/Header";
 
 const LANGUAGES = [
-  {id: "cpp",label: "C++", icon:"⚡" },
-  {id: "python",label: "Python", icon:"🐍" },
-  {id: "c",label: "C", icon:"💻" }
-]
+  { id: "cpp", label: "C++" },
+  { id: "python", label: "Python" },
+  { id: "c", label: "C" },
+];
 
-
-const DEFAULT_CODE: Record<string,string> = {
-   cpp: `#include <bits/stdc++.h>
+const DEFAULT_CODE: Record<string, string> = {
+  cpp: `#include <bits/stdc++.h>
 using namespace std;
 
 int main() {
-    ios_base::sync_with_stdio(false);
-    cin.tie(NULL);
-    
-    // Your code here
+    // your code goes here
     cout << "Hello, World!" << endl;
-    
     return 0;
 }`,
   c: `#include <stdio.h>
 #include <stdlib.h>
 
 int main() {
-    // Your code here
+    // your code goes here
     printf("Hello, World!\\n");
-    
     return 0;
 }`,
-  python: `import sys
-input = sys.stdin.readline
-
-def main():
-    # Your code here
-    print("Hello, World!")
-
-if __name__ == "__main__":
-    main()`,
-
-}
+  python: `# your code goes here
+print("Hello, World!")`,
+};
 
 type SubmissionStatus = "idle" | "pending" | "running" | "completed" | "error";
 
-
 export default function Home() {
-  const [language,setLanguage] = useState("cpp")
-  const[code,setCode] = useState(DEFAULT_CODE["cpp"])
-  const[stdin,setStdin] = useState("")
-  const[output,setOutput] = useState("")
-  const[stderr,setStderr] = useState("")
-  const [execTime,setExecTime] = useState<number | null>(null)
-  const [langDropOpen, setLangDropOpen] = useState(false);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const startTimeRef = useRef<number>(0);
+  const [language, setLanguage] = useState("cpp");
+  const [code, setCode] = useState(DEFAULT_CODE["cpp"]);
+  const [stdin, setStdin] = useState("");
+  const [output, setOutput] = useState("");
+  const [stderr, setStderr] = useState("");
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
+  const [execTime, setExecTime] = useState<number | null>(null);
   const [status, setStatus] = useState<SubmissionStatus>("idle");
-  
-   const stopPolling = useCallback(() => {
+  const [splitPercent, setSplitPercent] = useState<number>(50);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollCountRef = useRef<number>(0);
+  const startTimeRef = useRef<number>(0);
+  const handleSubmitRef = useRef<() => void>(() => {});
+  const workspaceRef = useRef<HTMLDivElement>(null);
+
+  const stopPolling = useCallback(() => {
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
+    pollCountRef.current = 0;
   }, []);
 
   useEffect(() => {
     return () => stopPolling();
   }, [stopPolling]);
 
+  const handleLanguageChange = (langId: string) => {
+    setLanguage(langId);
+    setCode(DEFAULT_CODE[langId] || "");
+  };
 
+  const handleResetCode = () => {
+    if (
+      code !== DEFAULT_CODE[language] &&
+      !window.confirm("Reset editor to initial template?")
+    ) {
+      return;
+    }
+    setCode(DEFAULT_CODE[language]);
+  };
 
-   
-  const handleLanguageChange = (Lang:string)=>{
-    setLanguage(Lang)
-    setCode(DEFAULT_CODE[Lang])
-    setLangDropOpen(false)
-  }
-
-  const handleSubmit = async () =>{
-    if(status === "running" || status === "pending") {
+  const handleSubmit = async () => {
+    if (status === "running" || status === "pending") {
       return;
     }
 
     setStatus("pending");
     setOutput("");
     setStderr("");
+    setDispatchError(null);
     setExecTime(null);
     startTimeRef.current = Date.now();
-
-
+    pollCountRef.current = 0;
 
     try {
-      const res = await fetch("/api/submit",{
-        method:"post",
-        headers:{
-          "Content-Type":"application/json"
+      const res = await fetch("/api/submit", {
+        method: "post",
+        headers: {
+          "Content-Type": "application/json",
         },
-        body:JSON.stringify({
+        body: JSON.stringify({
           code,
           language,
           stdin,
-        })
-      })
+        }),
+      });
 
       if (!res.ok) {
-       const error = await res.json();
-
+        const errorData = await res.json().catch(() => ({}));
         setStatus("error");
-       setStderr(
-        error.error || error.message || "Submission failed"
-      );
-
-      return;
-     }
-
+        setDispatchError(
+          errorData.error || errorData.message || "Unable to queue execution request on server (HTTP " + res.status + ")."
+        );
+        return;
+      }
 
       const { submissionId } = await res.json();
 
       pollingRef.current = setInterval(async () => {
+        pollCountRef.current += 1;
+
+        // Abort after 45s of waiting in queue
+        if (pollCountRef.current > 38) {
+          stopPolling();
+          setStatus("error");
+          setDispatchError("Execution job timed out waiting in queue after 45 seconds.");
+          setExecTime(Date.now() - startTimeRef.current);
+          return;
+        }
+
         try {
           const pollRes = await fetch(`/api/submission/${submissionId}`);
+          if (!pollRes.ok) {
+            throw new Error(`Polling returned HTTP ${pollRes.status}`);
+          }
+
           const data = await pollRes.json();
 
           if (data.status === "running") {
@@ -141,110 +151,147 @@ export default function Home() {
         } catch {
           stopPolling();
           setStatus("error");
-          setStderr("Network error while polling");
+          setDispatchError("Network connection interrupted while checking execution status.");
         }
       }, 1200);
-
-      
-    } catch (error) {
-      setStatus("error")
-      setStderr("Failed to submit code , pls try again");
+    } catch {
+      setStatus("error");
+      setDispatchError("Could not reach backend API server. Verify server is running.");
     }
-  }
-  
+  };
+
+  handleSubmitRef.current = handleSubmit;
+
+  // Global Ctrl+Enter / Cmd+Enter shortcut
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        handleSubmitRef.current();
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
+
+  // Draggable Split Divider Logic
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging || !workspaceRef.current) return;
+      const rect = workspaceRef.current.getBoundingClientRect();
+      const currentX = e.clientX - rect.left;
+      const rawPercent = (currentX / rect.width) * 100;
+      // Clamp between 25% and 75%
+      const clamped = Math.min(Math.max(rawPercent, 25), 75);
+      setSplitPercent(clamped);
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    if (isDragging) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging]);
 
   const isRunning = status === "pending" || status === "running";
-  const currentLang = LANGUAGES.find((l) => l.id === language)!;
 
-
-
-   return (
-    <div className="arena-root">
-      {/* Top Bar */}
+  return (
+    <div className="cc-app-shell">
+      {/* 1. Header Navigation */}
       <Header status={status} execTime={execTime} />
 
-      {/* Main Layout */}
-      <main className="arena-main">
-        {/* Editor Panel */}
-        <section className="arena-editor-panel">
-          <div className="arena-panel-header">
-            <div className="arena-panel-dots">
-              <span /><span /><span />
-            </div>
-            <span className="arena-panel-title">editor</span>
-            <div className="arena-lang-selector" onClick={() => setLangDropOpen(!langDropOpen)}>
-              <span className="arena-lang-icon">{currentLang.icon}</span>
-              <span className="arena-lang-label">{currentLang.label}</span>
-              <span className="arena-lang-chevron">{langDropOpen ? "▲" : "▼"}</span>
-              {langDropOpen && (
-                <div className="arena-lang-dropdown">
-                  {LANGUAGES.map((l) => (
-                    <button
-                      key={l.id}
-                      className={`arena-lang-option ${l.id === language ? "active" : ""}`}
-                      onClick={(e) => { e.stopPropagation(); handleLanguageChange(l.id); }}
-                    >
-                      <span>{l.icon}</span>
-                      <span>{l.label}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+      {/* 2. Page Heading Row */}
+      <div className="cc-heading-row">
+        <h1 className="cc-page-title">Online Compiler</h1>
+      </div>
+
+      {/* 3. Main Two-Column Workspace */}
+      <main className="cc-workspace" ref={workspaceRef}>
+        {/* Left Pane: Code Editor */}
+        <section
+          className="cc-editor-pane"
+          style={{ width: `${splitPercent}%` }}
+          aria-label="Code Editor"
+        >
+          <CodeEditor
+            language={language}
+            code={code}
+            languages={LANGUAGES}
+            onLanguageChange={handleLanguageChange}
+            onChange={setCode}
+            onRun={handleSubmit}
+            onReset={handleResetCode}
+          />
+        </section>
+
+        {/* Resizable Divider Handle */}
+        <div
+          className={`cc-divider ${isDragging ? "dragging" : ""}`}
+          onMouseDown={() => setIsDragging(true)}
+          role="separator"
+          aria-valuenow={splitPercent}
+          aria-label="Resize editor and output panels"
+        >
+          <div className="cc-divider-handle" aria-hidden="true">
+            <span />
+            <span />
+            <span />
           </div>
-          <div className="arena-editor-wrap">
-            <CodeEditor
-              language={language}
-              code={code}
-              onchange={setCode}
-            />
-          </div>
-          <div className="arena-editor-footer">
-            <span className="arena-line-count">
-              {code.split("\n").length} lines · {code.length} chars
-            </span>
+        </div>
+
+        {/* Right Pane: Run, Stdin, Output */}
+        <aside
+          className="cc-right-pane"
+          style={{ width: `${100 - splitPercent}%` }}
+          aria-label="Execution Controls and Output"
+        >
+          {/* A. Run Toolbar */}
+          <div className="cc-run-toolbar">
             <button
-              className={`arena-run-btn ${isRunning ? "running" : ""}`}
+              type="button"
+              className="cc-run-btn"
               onClick={handleSubmit}
               disabled={isRunning}
+              aria-label="Run Code"
             >
               {isRunning ? (
                 <>
-                  <span className="arena-spinner" />
-                  {status === "pending" ? "Queuing..." : "Running..."}
+                  <span className="cc-spinner" aria-hidden="true" />
+                  <span>Running...</span>
                 </>
               ) : (
-                <>
-                  <span className="arena-run-icon">▶</span>
-                  Run Code
-                </>
+                <span>Run</span>
               )}
             </button>
           </div>
-        </section>
 
-        {/* Right Panel */}
-        <aside className="arena-right-panel">
-          {/* Stdin */}
+          {/* B. Standard Input (with C. Helper Text) */}
           <StdinInput value={stdin} onChange={setStdin} />
 
-          {/* Output */}
-          <OutputPanel status={status} output={output} stderr={stderr} />
+          {/* D. Execution Output */}
+          <OutputPanel
+            output={output}
+            stderr={stderr}
+            status={status}
+            dispatchError={dispatchError}
+            execTime={execTime}
+          />
         </aside>
       </main>
     </div>
   );
-
-
 }
 
-
 /*
-
-Full map of what is happening in this code or what we are trying to achieve through this code 
-
-
-User clicks RUN
+Full map of submission workflow:
+User clicks RUN or presses Ctrl+Enter
 ↓
 handleSubmit()
 ↓
@@ -252,43 +299,17 @@ status = pending
 ↓
 POST /api/submit
 ↓
-backend creates execution job
+backend creates execution job in PostgreSQL & BullMQ queue
 ↓
 backend returns submissionId
 ↓
-frontend starts polling
+frontend starts polling /api/submission/:id every 1.2 seconds
 ↓
 GET /api/submission/id
 ↓
-backend says running
+backend worker executes process in isolated environment
 ↓
-frontend keeps polling
+backend returns output / stderr
 ↓
-backend finishes execution
-↓
-backend returns output
-↓
-frontend stops polling
-↓
-show result
-
-
-
-
-also about polling mechanism , frontend starts polling backend every 1.2 seconds checking the status of code execution 
-
-but this polling , in order to do polling there are also few steps involved the steps of polling that are required are 
-1.startpolling: when user submits code and we get submissionId we start polling by setting an interval that calls the API to check status every 1.2 seconds
-2.stopPolling: when we get final status from backend (either completed or error) we stop polling by clearing the interval
-3.cleanup: also when component unmounts we need to clear the interval to avoid memory leaks
-4.error handling: if there is any network error during polling we also need to stop polling and show error message to user
-5.status management: we need to manage the status of submission (idle, pending, running, completed, error) to show appropriate UI and prevent multiple submissions at the same time
-6.execTime: we also track execution time by recording start time when submission is made and calculating difference when we get final status from backend
-7.UI updates: based on status we update the UI to show loading state, output, error messages and execution time
-
-
-
-
-
-
+frontend stops polling and displays stdout / stderr
 */

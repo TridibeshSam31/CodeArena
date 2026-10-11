@@ -1,38 +1,40 @@
-"use client"
+"use client";
 
 import React from "react";
 
-interface StdInputProps{
-    stdin:String;
-    onchange:(stdin:String) => void;
+export interface StdinInputProps {
+  value?: string;
+  onChange?: (val: string) => void;
+  stdin?: string;
+  onchange?: (val: string) => void;
 }
 
+export default function StdinInput({
+  value,
+  onChange,
+  stdin,
+  onchange,
+}: StdinInputProps) {
+  const currentValue = (value !== undefined ? value : stdin) || "";
 
+  const handleChange = (newVal: string) => {
+    if (onChange) onChange(newVal);
+    if (onchange) onchange(newVal);
+  };
 
-const StdinInput = ({stdin,onchange}:StdInputProps) => {
-    return(
-        <div className="arena-sub-panel arena-stdin-panel">
-        <div className="arena-panel-header">
-            <div className="arena-panel-dots">
-                <span /><span /><span />
-
-            </div>
-            <span className="arena-panel-title">stdin</span>
-            <span className="arena-panel-badge">input</span>
-
-        </div>
-        <textarea
-        className="arena-stdin"
-        //@ts-ignore
-        value={stdin}
-        onChange={(e) => onchange(e.target.value)}
-        placeholder="Enter input for your program..."
+  return (
+    <div className="cc-stdin-wrapper">
+      <textarea
+        className="cc-stdin-textarea"
+        value={currentValue}
+        onChange={(e) => handleChange(e.target.value)}
+        placeholder="Enter Input here"
         spellCheck={false}
-        />
-
-        </div>
-    )
+        aria-label="Standard input"
+      />
+      <p className="cc-stdin-hint">
+        If your code takes input, add it in the above box before running.
+      </p>
+    </div>
+  );
 }
-
-
-export default StdinInput;

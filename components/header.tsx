@@ -1,39 +1,54 @@
 "use client";
+
 import React from "react";
 
 type SubmissionStatus = "idle" | "pending" | "running" | "completed" | "error";
 
 interface HeaderProps {
   status: SubmissionStatus;
-  execTime: number | null;
+  execTime?: number | null;
+  onResetCode?: () => void;
+  onCopyCode?: () => void;
+  copiedCode?: boolean;
 }
 
-const Header = ({ status, execTime }: HeaderProps) => {
+export default function Header({
+  status,
+  execTime,
+}: HeaderProps) {
+  const isRunning = status === "pending" || status === "running";
+
   return (
-    <header className="arena-header">
-      <div className="arena-logo">
-        <span className="arena-logo-bracket">{"{"}</span>
-        <span className="arena-logo-text">CodeArena</span>
-        <span className="arena-logo-bracket">{"}"}</span>
+    <header className="cc-top-header">
+      {/* Brand & Compiler nav tab */}
+      <div className="cc-header-left">
+        <div className="cc-brand">
+          <span className="cc-brand-badge" aria-hidden="true">
+            &lt;/&gt;
+          </span>
+          <span>CodeArena</span>
+        </div>
+
+        <nav className="cc-header-nav" aria-label="Main Navigation">
+          <span className="cc-nav-item">Compiler</span>
+        </nav>
       </div>
-      <div className="arena-header-center">
-        <div className="arena-status-dot" data-status={status} />
-        <span className="arena-status-text">
-          {status === "idle" && "Ready"}
-          {status === "pending" && "Queued..."}
-          {status === "running" && "Executing..."}
-          {status === "completed" && "Completed"}
-          {status === "error" && "Error"}
-        </span>
-        {execTime && status !== "idle" && (
-          <span className="arena-exec-time">{(execTime / 1000).toFixed(2)}s</span>
+
+      {/* Right side status if active */}
+      <div className="cc-header-right">
+        {isRunning && (
+          <div className="cc-status-indicator">
+            <span className="cc-status-dot running" />
+            <span>{status === "pending" ? "Queued" : "Running..."}</span>
+          </div>
         )}
-      </div>
-      <div className="arena-header-right">
-        <span className="arena-version">v1.0</span>
+
+        {execTime && status === "completed" && (
+          <div className="cc-status-indicator">
+            <span>{(execTime / 1000).toFixed(2)}s</span>
+          </div>
+        )}
       </div>
     </header>
   );
-};
-
-export default Header;
+}

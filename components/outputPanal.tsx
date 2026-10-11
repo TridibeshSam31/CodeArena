@@ -1,77 +1,87 @@
-"use client"
+"use client";
 
 import React from "react";
 
 type SubmissionStatus = "idle" | "pending" | "running" | "completed" | "error";
 
-interface OutputPanelProps{
-   output: string;
-   stderr: string;
-   status:SubmissionStatus
+interface OutputPanelProps {
+  output: string;
+  stderr: string;
+  status: SubmissionStatus;
+  dispatchError?: string | null;
+  execTime?: number | null;
 }
 
+export default function OutputPanel({
+  output,
+  stderr,
+  status,
+  dispatchError,
+}: OutputPanelProps) {
+  const isTimeLimit =
+    stderr.includes("Time Limit Exceeded") ||
+    stderr.toLowerCase().includes("timed out");
+  const isCompilationError =
+    stderr.toLowerCase().includes("compilation error") ||
+    stderr.toLowerCase().includes("compilation failed") ||
+    stderr.includes("SyntaxError");
+  const isRuntimeError =
+    !isTimeLimit &&
+    !isCompilationError &&
+    (status === "error" || (status === "completed" && !!stderr));
 
-const OutputPanel = ({output,stderr,status}:OutputPanelProps) => {
   return (
-   <div className="arena-sub-panel arena-output-panel" data-status={status}>
-      <div className="arena-panel-header">
-        <div className="arena-panel-dots">
-          <span /><span /><span />
-        </div>
-        <span className="arena-panel-title">output</span>
-        {status === "completed" && !stderr && (
-          <span className="arena-badge-success">✓ AC</span>
-        )}
-        {status === "error" || (status === "completed" && stderr) ? (
-          <span className="arena-badge-error">✗ ERR</span>
-        ) : null}
+    <div className="cc-output-wrapper">
+      <div className="cc-output-header">
+        <h2 className="cc-output-heading">Output</h2>
       </div>
 
-      <div className="arena-output-body">
-        {status === "idle" && (
-          <div className="arena-output-empty">
-            <span className="arena-empty-icon">⌨</span>
-            <span>Run your code to see output</span>
+      <div className="cc-output-box" role="region" aria-live="polite">
+        {/* Loading status */}
+        {(status === "pending" || status === "running") && (
+          <div className="cc-output-status-label timeout">
+            {status === "pending" ? "Queued for execution..." : "Executing program..."}
           </div>
         )}
-        {(status === "running" || status === "pending") && (
-          <div className="arena-output-loading">
-            <div className="arena-loader-bars">
-              <span /><span /><span /><span /><span />
-            </div>
-            
-            <span>{status === "pending" ? "Waiting in queue..." : "Executing code..."}</span>
+
+        {/* Dispatch or network failure */}
+        {dispatchError && (
+          <div className="cc-dispatch-alert">
+            <strong>Submission Failed:</strong> {dispatchError}
           </div>
         )}
-        {(status === "completed" || status === "error") && (
-          <>
-            {output && (
-              <div className="arena-output-section">
-                <span className="arena-output-label">stdout</span>
-                <pre className="arena-output-pre">{output}</pre>
-              </div>
-            )}
-            {stderr && (
-              <div className="arena-output-section arena-output-error">
-                <span className="arena-output-label">stderr / error</span>
-                <pre className="arena-output-pre">{stderr}</pre>
-              </div>
-            )}
-            {!output && !stderr && (
-              <div className="arena-output-empty">
-                <span className="arena-empty-icon">◎</span>
-                <span>No output produced</span>
-              </div>
-            )}
-          </>
+
+        {/* Specific error verdicts */}
+        {isTimeLimit && (
+          <div className="cc-output-status-label timeout">
+            Time Limit Exceeded (5.0s)
+          </div>
+        )}
+
+        {isCompilationError && (
+          <div className="cc-output-status-label error">
+            Compilation Error
+          </div>
+        )}
+
+        {isRuntimeError && (
+          <div className="cc-output-status-label error">
+            Runtime Error
+          </div>
+        )}
+
+        {/* Stderr stream */}
+        {stderr && (
+          <pre className="cc-output-pre error">{stderr}</pre>
+        )}
+
+        {/* Stdout stream */}
+        {output && (
+          <pre className="cc-output-pre">{output}</pre>
         )}
       </div>
     </div>
   );
-
 }
-
-
-export default OutputPanel;
 
 
