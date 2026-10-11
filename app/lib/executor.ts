@@ -43,6 +43,9 @@ const execOptions: ExecSyncOptionsWithBufferEncoding = {
 };
 
 
+// Phase 1: Fixed timeout verdicts and C compilation error reporting.
+// Docker sandboxing will replace this host-based execution in a later phase.
+
 export default function executeCode({ code, language, input }: ExecuteCodeParams) {
     const baseTemp = "C:/codearena-temp";
     if (!fs.existsSync(baseTemp)) fs.mkdirSync(baseTemp, { recursive: true });
@@ -97,7 +100,7 @@ function executeCpp(code: string, input: string, tempDir: string) {
             success: false,
             error: "Compilation failed",
             stdout: "",
-            stderr: error.message,
+            stderr: error.stderr?.toString() || error.message,
             verdict: "compilation error"
         }
     }
@@ -125,7 +128,7 @@ function executeCpp(code: string, input: string, tempDir: string) {
                 success: false,
                 stdout: "",
                 stderr: "Time Limit Exceeded",
-                verdict: "Runtime Error",
+                verdict: "Time Limit Exceeded",
             };
         }
         return {
@@ -153,13 +156,13 @@ function executeC(code: string, input: string, tempDir: string) {
     try {
         execSync(`"${GCC}" "${sourceFile}" -o "${outputFile}"`, execOptions)
 
-    } catch (error) {
+    } catch (error: any) {
         console.log("Compilation error:", error)
         return {
             success: false,
             error: "Compilation failed",
             stdout: "",
-            stderr: "",
+            stderr: error.stderr?.toString() || error.message || "Unknown compilation error",
             verdict: "compilation error"
         }
 
@@ -185,13 +188,13 @@ function executeC(code: string, input: string, tempDir: string) {
                 success: false,
                 stdout: "",
                 stderr: "Time Limit Exceeded",
-                verdict: "Runtime Error",
+                verdict: "Time Limit Exceeded",
             };
         }
         return {
             success: false,
             stdout: error.stdout ? error.stdout.toString() : "",
-            stderr: error.stderr ? error.stderr.toString() : "Runtime error",
+            stderr: error.stderr?.toString() || error.message || "Runtime error",
             verdict: "Runtime Error",
         };
 
@@ -225,7 +228,7 @@ function executePython(code: string, input: string, tempDir: string) {
                 success: false,
                 stdout: "",
                 stderr: "Time Limit Exceeded",
-                verdict: "Runtime Error",
+                verdict: "Time Limit Exceeded",
             }
 
         }

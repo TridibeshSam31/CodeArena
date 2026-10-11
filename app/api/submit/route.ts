@@ -7,14 +7,14 @@ export async function POST(request:NextRequest){
      const {code,language,stdin,problemId} = await request.json()
  
      //valiate inputs 
-     if (!code||!language||!stdin) {
+     if (!code||!language) {
          return NextResponse.json({error:"Missing required fields"}, {status:400})
          
      }
      
  
      //validate language
-     const supportedLanguages = ["cpp","python","java"]
+     const supportedLanguages = ["cpp","python","c"]
      if(!supportedLanguages.includes(language)){
          return NextResponse.json({error:"Unsupported language"}, {status:400})
  
@@ -25,8 +25,8 @@ export async function POST(request:NextRequest){
          data:{
              code,
              language,
-             stdin,
-             status:"pending",
+             stdin:stdin || null,
+             status:"queued",
              problemId: problemId ? Number(problemId) : null,
  
          }

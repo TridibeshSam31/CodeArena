@@ -1,0 +1,31 @@
+FROM debian:bookworm-slim 
+
+ENV DEBIAN_FRONTEND=noninteractive 
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       gcc \
+       g++ \
+       python3 \
+       coreutils \
+       ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+
+RUN useradd \
+    --uid 10001 \
+    --create-home \
+    --shell /usr/sbin/nologin \
+    sandbox
+
+WORKDIR /workspace
+
+COPY run.sh /usr/local/bin/run-submission
+
+RUN chmod 0555 /usr/local/bin/run-submission
+
+USER 10001:10001
+
+ENTRYPOINT ["/usr/local/bin/run-submission"]
+
+

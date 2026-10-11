@@ -101,14 +101,23 @@ export default function Home() {
         headers:{
           "Content-Type":"application/json"
         },
-        body:JSON.stringify({code,language, stdin: stdin ?? " "})
+        body:JSON.stringify({
+          code,
+          language,
+          stdin,
+        })
       })
 
-      if(!res.ok){
-        const error = await res.json()
-        setStatus("error")
-        setStderr(error.message || "Submission failed");
-      }
+      if (!res.ok) {
+       const error = await res.json();
+
+        setStatus("error");
+       setStderr(
+        error.error || error.message || "Submission failed"
+      );
+
+      return;
+     }
 
 
       const { submissionId } = await res.json();

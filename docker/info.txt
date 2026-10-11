@@ -1,0 +1,522 @@
+FROM: Dockerfile ka base image specify karta hai. Ye image build karne ka starting point hota hai.
+debian:bookworm-slim ka matlab hai Debian Bookworm ka relatively minimal image.
+Soch, tujhe ek computer prepare karna hai. Do options hain:
+- Ek completely empty system se shuru kar.
+- Ek basic Linux environment le aur usmein required tools install kar.
+FROM doosra approach hai.
+Alternatives:
+Alternative	Kab use karein?	Trade-off
+debian:bookworm-slim	General-purpose Linux runtime	Reasonable compatibility, moderate image size
+ubuntu:24.04	Ubuntu-specific packages ya compatibility chahiye	Larger image ho sakti hai
+alpine:3.x	Very small image chahiye	musl libc ki wajah se kuch binaries aur packages ke saath compatibility differences
+gcc:...	Compiler preinstalled chahiye	Compiler image/version selection aur image size ka trade-off
+python:...-slim	Python-focused service	C/C++ compilers separately install karne pad sakte hain
+scratch	Minimal custom runtime	Almost sab kuch khud provide karna padega; is use case mein unnecessarily difficult
+
+
+CodeArena ke liye Debian kyun?
+Humein C, C++ aur Python ek hi environment mein chahiye. Debian ke packages aur GNU compilers ek straightforward starting point hain. Alpine chhota ho sakta hai, lekin online judge ke liye compatibility aur reproducibility bhi important hain.
+Ek important distinction: base image choose karna security ka complete solution nahi hai. Security container ke runtime configuration, privileges, resource limits aur host isolation par bhi depend karti hai.
+
+
+
+
+
+
+NV DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
+
+
+Definition — ENV: Image ke liye environment variable set karta hai. Ye variable subsequent build instructions aur normally resulting container environment mein available hota hai.
+DEBIAN_FRONTEND Debian package installer ko batata hai ki installation ke waqt interactive configuration prompts kaise handle karne hain.
+noninteractive ka matlab hai: package installation ke dauran user se terminal par questions poochhne ke bajaye configured defaults use karo.
+Real-life example: CI/CD pipeline mein image automatically build ho rahi hai. Agar installation beech mein keyboard input ka wait karegi, build hang ho sakta hai.
+Alternative:
+RUN DEBIAN_FRONTEND=noninteractive apt-get install ...
+
+
+Is form mein variable sirf us command ke liye set hota hai. Ye aksar cleaner hota hai agar variable ko resulting container mein permanently rakhne ki zaroorat nahi.
+CodeArena mein choice: Package installation ke liye noninteractive behavior useful hai. Lekin ENV se variable poori image mein persist hota hai, isliye command-scoped setting bhi valid alternative hai.
+5. RUN apt-get update ... apt-get install ...
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       gcc \
+       g++ \
+       python3 \
+       coreutils \
+       ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+
+Definition — RUN: Image build karte waqt command execute karta hai. Command ke filesystem changes image ke layer ka hissa ban jaate hain.
+Yahan teen major operations hain.
+A. apt-get update
+Package repositories ki latest available package-index information download karta hai.
+Ye software install nahi karta; ye package manager ko batata hai ki available package versions aur unki metadata kya hai.
+B. apt-get install
+Packages install karta hai.
+Package	Purpose in CodeArena
+gcc	C programs compile karna
+g++	C++ programs compile karna
+python3	Python programs execute karna
+coreutils	Common Linux utilities; is image mein timeout isi package se milta hai
+ca-certificates	Trusted certificate authorities, HTTPS certificate verification jaise tasks ke liye
+-y package manager ke confirmation prompts automatically accept karta hai.
+--no-install-recommends optional recommended packages ko avoid karta hai, taaki unnecessary software install na ho.
+C. rm -rf /var/lib/apt/lists/*
+Package indexes ki downloaded files delete karta hai.
+Ye kyun? Build ke dauran package metadata ki zaroorat thi. Runtime par aksar nahi hoti, isliye image size reduce karne mein madad milti hai.
+&& aur \ ka meaning
+- &&: Agli command tabhi chalao jab previous command successful ho.
+- \: Dockerfile mein long command ko multiple lines par likhne ka continuation character.
+In commands ko ek hi RUN instruction mein rakhne se package indexes usi image layer mein clean ho jaate hain. Agar cleanup ek later RUN mein hota, toh pehle layer mein stored data image size ko phir bhi badha sakta tha.
+Alternatives:
+- apk add — Alpine Linux ke package manager ke liye.
+- apt — interactive terminal use ke liye convenient frontend; Docker builds mein apt-get commonly prefer kiya jaata hai.
+- Compiler toolchain ke saath custom, pinned package versions — reproducibility improve karne ke liye.
+Production mein sirf apt-get update karna full reproducibility guarantee nahi karta. Packages badal sakte hain. Stronger reproducibility ke liye base image digest aur controlled package versions/repository snapshots use kiye ja sakte hain.
+6. RUN useradd ... sandbox
+RUN useradd \
+    --uid 10001 \
+    --create-home \
+    --shell /usr/sbin/nologin \
+    sandbox
+
+
+Definition — Linux user: Linux mein user ek identity hoti hai jiske naam par processes run kar sakte hain aur files access kar sakte hain. Har process kisi user ID (UID) ke context mein execute hota hai.
+Docker containers ke andar processes ko root ke bajaye restricted user ke under chalana security ke liye useful hai.
+Is instruction mein:
+- useradd: Naya Linux user create karta hai.
+- --uid 10001: User ka numeric ID 10001 set karta hai.
+- --create-home: User ka home directory create karta hai.
+- --shell /usr/sbin/nologin: Normal interactive login shell disable karta hai.
+- sandbox: User ka naam.
+Root vs non-root ka real example
+Agar user ke submitted code ko root privileges mil jaayen, toh container ki configuration aur exposed resources ke against uske paas unnecessarily zyada permissions ho sakti hain. Non-root user privileges reduce karta hai, although woh akela complete isolation guarantee nahi karta.
+Alternatives:
+1. Image mein pre-created non-root user use karna.
+2. USER 10001:10001 ki tarah numeric UID/GID specify karna.
+3. Har submission ke liye dynamically configured UID/GID use karna, jab host filesystem permissions aur multi-tenant isolation ke liye zaroori ho.
+CodeArena mein numeric UID kyun? Explicit numeric identity predictable hoti hai. Bas dhyaan rahe ki image ke andar aur host par bind-mounted files ki ownership/permissions properly configured hon.
+7. WORKDIR /workspace
+WORKDIR /workspace
+
+
+Definition — WORKDIR: Image/container ke liye working directory set karta hai. Uske baad relative paths use karne wali instructions isi directory ke relative interpret hoti hain.
+Example:
+WORKDIR /workspace
+
+
+Ab COPY example.py . likhne par destination /workspace/example.py hoga.
+Alternatives:
+- Har command mein full path use karna: /workspace/example.py.
+- Shell script mein cd /workspace karna.
+WORKDIR zyada readable hai aur agar directory exist nahi karti, Docker ise create kar deta hai.
+Online judge mein /workspace source files ka logical location ho sakta hai. Actual submissions ko container mein kaise transfer karna hai—bind mount, stdin, ya temporary files ke through—ye executor architecture ka separate decision hai.
+8. COPY run.sh ...
+COPY run.sh /usr/local/bin/run-submission
+
+
+Definition — COPY: Docker build context se files ko image ke filesystem mein copy karta hai.
+Yahan local run.sh image ke andar /usr/local/bin/run-submission ke naam se available hoga.
+Source aur destination:
+- run.sh: Docker build context mein existing file.
+- /usr/local/bin/run-submission: Image ke andar destination path.
+/usr/local/bin traditionally locally installed administrative/application executables ke liye use hota hai.
+Alternatives:
+- ADD: Files copy kar sakta hai aur kuch additional behaviors bhi provide karta hai. Simple local file copy ke liye COPY generally clearer choice hai.
+- RUN printf ... > file: File content build command se generate karna possible hai, lekin multiline scripts ke liye less readable.
+- Runtime par script mount karna: Image rebuild kiye bina script change ho sakti hai, lekin runtime file integrity aur deployment consistency ko manage karna padega.
+Important: Docker ka build context wahi files define karta hai jo COPY ko available ho sakti hain. Isi liye .dockerignore se .env, Git history aur unnecessary files ko build context se exclude karna achha practice hai.
+9. RUN chmod 0555 ...
+RUN chmod 0555 /usr/local/bin/run-submission
+
+
+Definition — chmod: Linux file permissions change karne ka command hai.
+0555 ka breakdown:
+Permission	Numeric value	Meaning
+Owner	5 = 4 + 1	Read + execute
+Group	5 = 4 + 1	Read + execute
+Others	5 = 4 + 1	Read + execute
+Linux mein 4 = read, 2 = write, aur 1 = execute.
+Isliye 0555 script ko readable aur executable banata hai, lekin writable nahi.
+Alternatives:
+- 0755: Owner ko write permission bhi milti hai.
+- 0550: Sirf owner aur group ko read/execute permission.
+- COPY --chmod=0555 run.sh ...: Supported Dockerfile syntax mein file copy karte waqt permissions set kar sakte hain, jisse separate RUN chmod instruction ki zaroorat nahi rehti.
+Hamare example mein 0555 suitable hai kyunki execution script ko runtime par modify karne ki zaroorat nahi hai.
+10. USER 10001:10001
+USER 10001:10001
+
+
+Definition — USER: Image ki subsequent build instructions aur default runtime commands ke liye user aur optional group select karta hai.
+Yahan UID 10001 aur GID 10001 use ho rahe hain.
+Pehle useradd se user create kiya; ab USER Docker ko batata hai ki entrypoint default roop se isi identity mein run hoga.
+Alternative: docker run --user 10001:10001 ... ke through runtime par user set karna.
+Runtime override useful hai, lekin image mein non-root default rakhna safer baseline hai. Agar deployment configuration ise override kar de, toh actual runtime identity verify karni chahiye.
+11. ENTRYPOINT [...]
+ENTRYPOINT ["/usr/local/bin/run-submission"]
+
+
+Definition — ENTRYPOINT: Container start hone par kaunsa primary executable launch karna hai, ye define karta hai.
+Is form ko exec form kehte hain. Ye JSON-array syntax hai; ismein shell automatically beech mein nahi aata.
+Example:
+docker run codearena-sandbox:local cpp /workspace/main.cpp
+
+
+Docker effectively run karega:
+/usr/local/bin/run-submission cpp /workspace/main.cpp
+
+
+Yahan cpp aur /workspace/main.cpp script ke arguments hain.
+Alternatives:
+- CMD: Default command/arguments specify karta hai; runtime par ise easily override kiya ja sakta hai.
+- ENTRYPOINT ["python3", "runner.py"]: Python-based runner directly launch karna.
+- ENTRYPOINT ["/bin/sh", "-c", "..."]: Shell syntax chahiye toh possible, lekin quoting, signal handling aur command-injection risks ko carefully handle karna padta hai.
+ENTRYPOINT vs CMD: Simple rule yaad rakh—ENTRYPOINT container ka primary executable define karta hai; CMD defaults provide karta hai. Dono ko saath bhi use kiya ja sakta hai.
+CodeArena ke liye ek fixed runner aur usko pass kiye gaye language/source arguments ek reasonable design hai.
+
+
+
+
+
+now if we have to write the same docker file using node then how we would have written it ?? 
+
+
+FROM node:22-alpine 
+
+
+RUN apk add --no-cache \
+    build-base \
+    python3 \
+    coreutils \
+    ca-certificates
+
+
+
+WORKDIR /workspace 
+
+
+COPY run.sh /usr/local/bin/run-submission
+
+RUN chmod 0555 /usr/local/bin/run-submission
+
+# Official Node image provides a non-root "node" user.
+USER node
+
+ENTRYPOINT ["/usr/local/bin/run-submission"]
+
+
+
+
+
+
+
+.sh file ka purpose etc and since maine yeh kabhi use kiya nhi hai 
+
+1. Shell script kya hoti hai?
+Definition: Shell script ek text file hoti hai jisme shell ke commands likhe hote hain, jinhe ek sequence mein execute kiya ja sakta hai.
+Shell ek program hai jo commands interpret aur execute karta hai. Linux mein common shells bash, sh, zsh hain.
+Hamari run.sh ek runner script hai: ye language identify karti hai, code compile ya execute karti hai, aur execution par time limit lagati hai.
+Dockerfile image taiyar karti hai; .sh us image ke andar submission chalane ke steps define karti hai.
+
+#!/bin/sh
+#!/bin/sh
+
+
+Definition — Shebang: File ki first line mein #! se shuru hone wali declaration batati hai ki script ko kaunsa interpreter execute kare.
+Yahan /bin/sh shell interpreter hai.
+Jab script executable file ki tarah launch hoti hai, operating system shebang ke through interpreter select kar sakta hai.
+Alternatives:
+#!/bin/bash
+
+
+Bash-specific features use karni hon toh Bash choose kar sakte hain.
+#!/usr/bin/env bash
+
+
+env ke through PATH mein available Bash locate karne ka common portable pattern hai, lekin exact interpreter environment par depend karega.
+Hamare case mein /bin/sh kyun? Script simple POSIX-style shell syntax use karti hai. Humein Bash arrays ya Bash-specific features ki zaroorat nahi.
+Dhyaan rahe: #!/bin/sh ka matlab ye nahi ki har Linux distribution mein sh exactly same shell implementation hai. POSIX-compatible behavior par depend karna zyada portable h
+
+
+3. #!/bin/sh
+#!/bin/sh
+
+
+Definition — Shebang: File ki first line mein #! se shuru hone wali declaration batati hai ki script ko kaunsa interpreter execute kare.
+Yahan /bin/sh shell interpreter hai.
+Jab script executable file ki tarah launch hoti hai, operating system shebang ke through interpreter select kar sakta hai.
+Alternatives:
+#!/bin/bash
+
+
+Bash-specific features use karni hon toh Bash choose kar sakte hain.
+#!/usr/bin/env bash
+
+
+env ke through PATH mein available Bash locate karne ka common portable pattern hai, lekin exact interpreter environment par depend karega.
+Hamare case mein /bin/sh kyun? Script simple POSIX-style shell syntax use karti hai. Humein Bash arrays ya Bash-specific features ki zaroorat nahi.
+Dhyaan rahe: #!/bin/sh ka matlab ye nahi ki har Linux distribution mein sh exactly same shell implementation hai. POSIX-compatible behavior par depend karna zyada portable hai.
+4. set -eu
+set -eu
+
+
+Ye ek important defensive instruction hai.
+-e — Exit on unhandled command failure
+Shell kuch command failures par script ko stop kar deta hai, instead of blindly continuing.
+Example:
+g++ broken.cpp -o /tmp/program
+
+
+Agar compilation fail hui, script ko executable run karne ki koshish nahi karni chahiye.
+set -e is behavior mein help karta hai, lekin shell ke if, &&, || aur other contexts mein exceptions hain. Ye universal error-handling mechanism nahi hai.
+-u — Treat unset variables as errors
+Agar script kisi unset variable ko use karne ki koshish kare, shell error de sakta hai instead of silently substituting an empty string.
+Example:
+echo "$source_file"
+
+
+Agar source_file set hi nahi hua, set -u us mistake ko expose kar sakta hai.
+Alternative: Har important command ka exit code explicitly check karna:
+if ! g++ main.cpp -o /tmp/program; then
+    echo "Compilation failed" >&2
+    exit 1
+fi
+
+
+Explicit checks zyada control dete hain, particularly jab compilation error aur runtime error ko separately classify karna ho. Production judge runner mein ye approach useful hogi.
+5. "$#" aur command-line arguments
+if [ "$#" -ne 2 ]; then
+    echo "Usage: run-submission <language> <source-file>" >&2
+    exit 64
+fi
+
+
+Definition — Command-line argument: Command launch karte waqt program ko diya gaya input, jo arguments ki form mein receive hota hai.
+Example:
+run-submission cpp /workspace/main.cpp
+
+
+Ismein:
+- $# = arguments ki count, yahan 2.
+- $1 = pehla argument, yahan cpp.
+- $2 = doosra argument, yahan /workspace/main.cpp.
+- -ne = “not equal” numeric comparison.
+- if ...; then ... fi = conditional block.
+Agar arguments ki count 2 nahi hai, script usage message print karke exit kar deti hai.
+>&2 kya hai?
+Ye output ko standard error (stderr) stream par redirect karta hai.
+Processes ke paas commonly teen standard streams hote hain:
+Stream	File descriptor	Purpose
+stdin	0	Input
+stdout	1	Normal output
+stderr	2	Errors/diagnostics
+Online judge mein ye distinction useful hai: user ka expected output stdout par capture kar sakte ho, jabki compiler diagnostics aur runner errors stderr se inspect kar sakte ho.
+exit 64 kyun?
+exit process ka exit status set karke script terminate karta hai. 64 commonly incorrect command usage ke liye use hone wala status hai.
+exit 66 neeche missing input file ke liye use kiya gaya hai; ye bhi conventional status hai.
+Alternative: Custom exit codes, jaise 10 for bad arguments aur 11 for missing source file. Important ye hai ki worker ko codes ka documented meaning pata ho.
+6. Variables aur ${VARIABLE:-default}
+language="$1"
+source_file="$2"
+
+
+Definition — Shell variable: Ek named value jise shell commands mein reuse kar sakte hain.
+Double quotes variable expansion ke baad value ko ek argument ke roop mein preserve karne mein help karte hain. Ye paths mein spaces hon tab bhi important hai.
+Example:
+source_file="/workspace/my solution.cpp"
+
+
+Quoted "$source_file" ek argument rahega. Unquoted $source_file word splitting ki wajah se multiple arguments mein break ho sakta hai.
+Ab ye line:
+timeout_seconds="${SANDBOX_TIMEOUT_SECONDS:-3}"
+
+
+Is syntax ka meaning hai: agar SANDBOX_TIMEOUT_SECONDS set hai aur empty nahi hai, uski value use karo; otherwise 3 use karo.
+Example:
+docker run -e SANDBOX_TIMEOUT_SECONDS=5 ...
+
+
+Is case mein runtime limit 5 seconds hogi, assuming value valid hai.
+Alternative:
+timeout_seconds=3
+
+
+Fixed value simpler hai, lekin runtime configuration flexible nahi rahegi.
+Production consideration: Environment variable ko blindly trust mat karna. Invalid value, negative number, excessively large value ya malformed input se runner fail ho sakta hai. Production mein timeout ko validate karo aur upper bound enforce karo. Aur sirf script-level timeout enough nahi—Docker/container orchestration mein bhi execution deadline enforce honi chahiye.
+7. File validation
+if [ ! -f "$source_file" ]; then
+    echo "Source file not found" >&2
+    exit 66
+fi
+
+
+-f check karta hai ki path ek regular file ko refer karta hai; ! condition ko invert karta hai.
+Matlab: agar source file exist nahi karti, toh error return karo.
+Alternatives:
+- test -r "$source_file" — file readable hai ya nahi.
+- test -s "$source_file" — file exist karti hai aur non-empty hai ya nahi.
+- File open karke validate karna — agar file content ka explicit processing karna ho.
+Yahan -f sufficient basic check hai, kyunki missing source ko compiler/interpreter tak bhejne ka koi faayda nahi.
+Lekin ye check source code safe hai ya valid hai ye nahi batata. Compiler aur runtime uske baad bhi errors de sakte hain.
+8. case "$language" in
+case "$language" in
+    c)
+        # C commands
+        ;;
+    cpp)
+        # C++ commands
+        ;;
+    python)
+        # Python commands
+        ;;
+    *)
+        echo "Unsupported language: $language" >&2
+        exit 64
+        ;;
+esac
+
+
+Definition — case: Ek control-flow statement jo value ke pattern ke according matching block execute karta hai. Ye multiple if/elif conditions ka alternative hai.
+- c) — agar language c hai.
+- cpp) — agar language cpp hai.
+- python) — agar language python hai.
+- *) — default branch, jab koi match na mile.
+- ;; — current branch end.
+- esac — case block close.
+Example: language=java aaya toh default branch chalegi aur script unsupported-language error dekar exit karegi.
+Alternative — if/elif:
+if [ "$language" = "c" ]; then
+    ...
+elif [ "$language" = "cpp" ]; then
+    ...
+elif [ "$language" = "python" ]; then
+    ...
+else
+    ...
+fi
+
+
+Dono valid hain. Multiple exact choices ke liye case usually cleaner hota hai.
+Ek architectural point: API route par language validation pehle se honi chahiye, lekin runner mein dobara validation defense in depth hai. Sirf frontend/API validation par depend karna sahi nahi.
+9. C compilation command
+gcc -std=c11 -O2 -pipe "$source_file" -o /tmp/program
+
+
+Is command ko todkar samajhte hain:
+Part	Definition aur purpose
+gcc	GNU Compiler Collection ka C compiler driver
+-std=c11	C11 language standard ke rules ke according compile karo
+-O2	Compiler optimizations enable karo, generally performance improve karne ke liye
+-pipe	Compilation ke intermediate stages ke beech pipes use karne ko prefer karo
+"$source_file"	Input source file
+-o /tmp/program	Output executable ka path set karo
+C aur C++ compilation mein difference
+C++ ke liye:
+g++ -std=c++17 -O2 -pipe "$source_file" -o /tmp/program
+
+
+Yahan g++ C++ compiler driver hai aur -std=c++17 C++17 language standard select karta hai.
+Alternatives:
+- -std=c++20 — agar judge C++20 support karta hai.
+- -O0 — debugging ya unoptimized execution ke liye; slower ho sakta hai.
+- -O1 / -O3 — different optimization levels; higher optimization hamesha har program ko faster nahi banati.
+- clang / clang++ — LLVM/Clang toolchain use karne ke liye.
+CodeArena ke liye important: Allowed language versions ko problem/judge configuration mein explicitly define karna chahiye. Sirf compiler ka default version select kar dena reproducible behavior ki guarantee nahi hai.
+10. Python execution command
+python3 "$source_file"
+
+
+Python generally interpreted language hai. Is workflow mein hum python3 ko source file dete hain aur interpreter program execute karta hai.
+C/C++ mein:
+Source code → Compilation → Executable → Execution
+
+
+Python mein:
+Source code → Python interpreter → Execution
+
+
+Python mein bhi syntax errors aur runtime exceptions aa sakte hain, lekin separate native executable compile karna normal workflow ka part nahi hai.
+Alternatives:
+- python3 -I file.py — Python ke isolated mode ke kuch environment/import behaviors use karne ke liye; judge compatibility verify karni hogi.
+- Version-specific interpreter, jaise python3.12 — agar judge ko exact version chahiye.
+- Python virtual environment — dependencies isolate karne ke liye; lekin arbitrary submitted packages install karna ek separate security aur resource-management problem hai.
+Hamare initial sandbox mein Python standard library tak limited rehna sensible starting point hai.
+11. timeout command
+timeout \
+    --signal=TERM \
+    --kill-after=1s \
+    "${timeout_seconds}s" \
+    /tmp/program
+
+
+Definition — Execution timeout: Maximum permitted time jiske baad system program ko terminate karne ki koshish karta hai.
+Soch, student ka program infinite loop mein phans gaya:
+int main() {
+    while (true) {}
+}
+
+
+Agar time limit nahi hai, program CPU consume karta rahega. Online judge ko aise execution ko stop karna padta hai.
+Har option ka meaning:
+- timeout: GNU Coreutils ka command jo duration limit ke saath process execute karta hai.
+- --signal=TERM: Deadline par pehle SIGTERM bhejo, jo process ko terminate karne ka request hai.
+- --kill-after=1s: Agar process ek second ke andar terminate nahi hota, toh stronger SIGKILL bhejo.
+- "${timeout_seconds}s": Time limit, jaise 3s.
+- /tmp/program: Execute hone wala binary.
+Python ke case mein timeout isi tarah interpreter aur uske script par apply hota hai:
+timeout 3s python3 "$source_file"
+
+
+SIGTERM vs SIGKILL
+SIGTERM — Graceful termination request
+Process ko terminate hone ka signal milta hai. Program signal handle kar sakta hai, cleanup kar sakta hai, ya signal ignore kar sakta hai.
+
+
+SIGKILL — Forced termination
+Process is signal ko catch ya ignore nahi kar sakta. Operating system process ko forcibly terminate karta hai.
+
+
+timeout ke alternatives
+Approach	Kab useful hai?	Limitation
+GNU timeout	Simple per-process deadline	Descendant processes aur full resource isolation ko separately handle karna pad sakta hai
+Node.js child_process timeout	Existing Node executor mein	Process-tree termination aur cleanup carefully implement karna hoga
+Docker/container runtime deadline	Container-level execution control	Container ko reliably stop/kill aur cleanup karna hoga
+External watchdog	Worker ya supervisor process se execution monitor karna	Extra orchestration complexity
+Ek critical implementation detail: Is script mein timeout sirf execution command ko wrap karta hai. C/C++ compilation ko abhi timeout se wrap nahi kiya gaya. Isliye malicious ya pathological source se compilation bhi excessive time ya memory consume kar sakti hai. Production implementation mein compile aur run dono ke liye resource controls chahiye.
+12. exec ka actual role
+exec timeout ... /tmp/program
+
+
+Definition — exec: Shell ke current process ko specified command se replace karta hai.
+exec ke bina shell ek child process launch karke uske finish hone ka wait kar sakta hai. exec use karne par shell ki separate process layer replace ho jaati hai.
+Isse process management aur signal forwarding simpler ho sakte hain.
+Alternative: exec ke bina command chalana aur shell ke through status handle karna. Ye tab useful hai jab script ko command ke baad cleanup, logging ya custom exit-code mapping karni ho.
+CodeArena mein aage humein compilation aur execution ke exit statuses distinguish karne honge. Isliye production runner mein sirf exec kar dena sufficient nahi; humein exit codes aur timeout status ko explicitly capture karna padega.
+Timeout ka exit code kya hota hai?
+GNU timeout normally deadline par terminate karne ke baad exit code 124 return karta hai. Agar process ko force-kill karna pade toh 137 bhi dikh sakta hai.
+Lekin exit code 137 ko automatically OOM verdict mat samajhna. Ye SIGKILL se bhi aa sakta hai. Timeout, OOM aur manual termination ko distinguish karne ke liye watchdog state aur container/cgroup ki memory information bhi inspect karni hogi.
+Online judge mein in internal statuses ko appropriate verdicts mein map kiya jaata hai:
+- Accepted
+- Compilation Error
+- Runtime Error
+- Time Limit Exceeded
+- Memory Limit Exceeded
+- Wrong Answer
+Hamari current run.sh ye complete verdict classification implement nahi karti. Ye abhi ek basic execution runner hai.
+13. ;; aur esac
+cpp)
+    g++ ...
+    exec timeout ...
+    ;;
+
+
+;; current case branch ko end karta hai.
+esac
+
+
+case statement ko close karta hai.
+Ye Bash-only constructs nahi hain; hamare /bin/sh ke supported syntax ka part hain.
+
+
