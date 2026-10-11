@@ -81,7 +81,7 @@ Built for developers who want to ship competitive programming tooling, run inter
 ### High-Level Design (HLD)
 
 <div align="center">
-  <img src="public/Hld.png" alt="CodeArena High Level Design" width="900"/>
+  <img src="public/hld.png" alt="CodeArena High Level Design" width="900"/>
 </div>
 
 The diagram above shows the full end-to-end flow:
