@@ -8,13 +8,19 @@ datasource db {
 }
 
 model Submission {
-  id        String   @id @default(uuid())
-  code      String
-  language  String
-  stdin     String?
-  status    String   @default("queued")
-  output    String?
-  stderr    String?
-  createdAt DateTime @default(now())
-  problemId Int?  //not needed currently thats for a leetcode type platform not for an online compiler
+  id              String   @id @default(uuid())
+  code            String
+  language        String
+  stdin           String?
+  status          String   @default("queued")
+  output          String?
+  stderr          String?
+  createdAt       DateTime @default(now())
+  problemId       Int?
+
+  verdict         String?
+  exitCode        Int?
+  executionTimeMs Int?
+  startedAt       DateTime?
+  completedAt     DateTime?
 }
