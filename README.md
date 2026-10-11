@@ -4,10 +4,11 @@
 
 ![CodeArena Banner](https://img.shields.io/badge/CodeArena-Online_Judge_Platform-blue?style=for-the-badge&logo=code&logoColor=white)
 
-**A modern online judge platform with a production-inspired execution architecture — run code, submit solutions, and watch results in real-time.**
+**A modern, production-grade online compiler and judge engine with asynchronous queueing, PostgreSQL persistence, and Docker-based sandbox isolation.**
 
 [![Next.js](https://img.shields.io/badge/Next.js-15.5-black?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
+[![Docker](https://img.shields.io/badge/Docker-Sandbox_Isolation-2496ED?style=flat-square&logo=docker)](https://www.docker.com/)
 [![Prisma](https://img.shields.io/badge/Prisma-6.x-2D3748?style=flat-square&logo=prisma)](https://prisma.io/)
 [![BullMQ](https://img.shields.io/badge/BullMQ-5.x-red?style=flat-square&logo=redis)](https://bullmq.io/)
 [![Redis](https://img.shields.io/badge/Redis-Queue-DC382D?style=flat-square&logo=redis)](https://redis.io/)
@@ -26,6 +27,7 @@
 - [Engineering Highlights](#-engineering-highlights)
 - [Screenshots](#-screenshots)
 - [Architecture](#-architecture)
+- [Sandbox Security Hardening](#-sandbox-security-hardening)
 - [Features](#-features)
 - [Tech Stack](#-tech-stack)
 - [How It Works](#-how-it-works)
@@ -33,29 +35,34 @@
 - [Environment Variables](#-environment-variables)
 - [Project Structure](#-project-structure)
 - [API Reference](#-api-reference)
-- [Code Execution Flow](#-code-execution-flow)
+- [Verdict System](#-verdict-system)
 - [Database Schema](#-database-schema)
+- [Production Readiness Checklist](#-production-readiness-checklist)
 - [Contributing](#-contributing)
 
 ---
 
 ## 🌟 Overview
 
-**CodeArena** is a full-stack online judge platform that lets users write, execute, and evaluate code directly in the browser — no local setup required. Think LeetCode or Codeforces, but with a modern architecture you actually understand.
+**CodeArena** is a full-stack online judge and code execution platform built to evaluate submitted code securely, reliably, and with low latency directly in the browser. 
 
-Built for developers who want to ship competitive programming tooling, run internal coding assessments, or learn how real-world judge systems work under the hood.
-
-> This project demonstrates **backend engineering concepts** including asynchronous job queues, worker processes, isolated code execution, polling-based result delivery, and database-backed state management.
+Unlike naive online compilers that execute user code unsafely directly on the host machine using `child_process.exec`, CodeArena implements an industry-standard **isolated execution pipeline**:
+1. **Frontend**: Monaco Editor with a CodeChef/LeetCode-inspired dark interface.
+2. **Queueing**: Asynchronous BullMQ queue backed by Redis with decoupled workers.
+3. **Sandbox Engine**: Ephemeral Debian Linux Docker containers running with dropped privileges, zero network access, strict PID and memory limits, and in-memory execution tmpfs.
+4. **Hierarchical Timeouts**: Dual-layer timeout mechanism distinguishing inner process timeouts from outer container deadlines.
+5. **Persistence**: Full execution telemetry stored in PostgreSQL via Prisma (`status`, `verdict`, `exitCode`, `executionTimeMs`, `startedAt`, `completedAt`).
 
 ---
 
 ## 🎯 Engineering Highlights
 
-- Asynchronous execution pipeline using BullMQ and Redis
-- Separate worker process for code execution
-- Process isolation with execution timeouts and automatic cleanup
-- Persistent submission tracking using PostgreSQL and Prisma
-- Real-time result polling from the client
+- 🐳 **Hardened Docker Sandbox** — User code runs inside isolated non-root containers (`UID 10001`) with dropped Linux capabilities, read-only rootfs, and no network access.
+- ⏱️ **Dual-Layer Hierarchical Timeouts** — GNU `timeout` inner sandbox enforcement (3s limit) and outer executor deadline (15s) with automated container termination (`docker kill` & `docker rm -f`).
+- 🚦 **Precise Outcome Classification** — Distinguishes `Accepted`, `Compilation Error`, `Runtime Error`, `Time Limit Exceeded`, `Output Limit Exceeded`, and `Execution Error`.
+- ⚡ **Asynchronous Job Pipeline** — High-concurrency BullMQ worker decoupled from the Next.js API server to prevent CPU starvation.
+- 🛡️ **Resource & Fork-Bomb Protection** — 512 MB memory ceiling, 1 CPU core allocation, 64 PID ceiling, and 1 MiB output streaming limit.
+- 🗄️ **Full Telemetry Persistence** — Structured database records containing timestamps, verdicts, exit codes, and stdout/stderr.
 
 ---
 
@@ -63,14 +70,24 @@ Built for developers who want to ship competitive programming tooling, run inter
 
 <div align="center">
 
-### C++ Editor
-<img src="public/screenshots/cpp-editor.png" alt="CodeArena C++ Editor" width="800"/>
+### 1. C++ Execution — Infinite Loop & Timeout Handling
+*Demonstrating sandbox isolation, GNU timeout enforcement, exit code `124` classification, and clean execution duration measurement.*
+<br/>
+<img src="public/screenshots/cpp-editor.png" alt="CodeArena C++ Execution — Time Limit Exceeded" width="850"/>
 
-### Python Editor
-<img src="public/screenshots/python-editor.png" alt="CodeArena Python Editor" width="800"/>
+<br/><br/>
 
-### C Editor
-<img src="public/screenshots/c-editor.png" alt="CodeArena C Editor" width="800"/>
+### 2. Python 3 Execution — Accepted & Standard Output
+*Demonstrating Python unbuffered stdout capture, execution time metrics, exit code `0`, and friendly execution verdict banner.*
+<br/>
+<img src="public/screenshots/python-editor.png" alt="CodeArena Python Execution — Accepted" width="850"/>
+
+<br/><br/>
+
+### 3. C Execution — High-Performance GCC Compilation & Run
+*Demonstrating C11 compilation and execution, sub-3s total roundtrip, and clean process output display.*
+<br/>
+<img src="public/screenshots/c-editor.png" alt="CodeArena C Execution — Accepted" width="850"/>
 
 </div>
 
@@ -81,279 +98,226 @@ Built for developers who want to ship competitive programming tooling, run inter
 ### High-Level Design (HLD)
 
 <div align="center">
-  <img src="public/hld.png" alt="CodeArena High Level Design" width="900"/>
+  <img src="public/Hld.png" alt="CodeArena High Level Design" width="900"/>
 </div>
 
-The diagram above shows the full end-to-end flow:
-- **User** submits code → passes through **RateLimiter** → enqueued as a job
-- **Redis + BullMQ** power the Queue System with exponential backoff retries
-- Jobs that repeatedly fail are routed to the **Dead Letter Queue**
-- A **Worker** dequeues jobs → runs code in the **nsys code executioner** (sandboxed `child_process`)
-- Execution output is **saved in PostgreSQL**
-- **Frontend** polls `GET /submission/:id` to display real-time results
+### Detailed Execution Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                       Next.js Web Client                        │
+│             (Monaco Editor + Stdin + Output Panel)              │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                   POST /api/submit (JSON payload)
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                       Next.js API Server                        │
+│   • Validates language, source code, stdin                      │
+│   • Creates Submission record in PostgreSQL (status: "queued")   │
+│   • Enqueues execution task into Redis via BullMQ               │
+│   • Returns { submissionId } immediately (<50ms)                │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                           Redis Queue
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     Dedicated Worker (tsx)                      │
+│   • Dequeues job from BullMQ                                    │
+│   • Updates status to "running", resets prior output/telemetry   │
+│   • Writes source code to host ephemeral temp folder (0444)     │
+│   • Spawns Docker sandbox process                               │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                     docker run (Isolated Sandbox)
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   codearena-sandbox:local Container             │
+│   • User: 10001:10001 (non-root)                                │
+│   • Network: none (fully offline)                               │
+│   • Mount: Read-only bind /workspace                            │
+│   • Tmpfs: /tmp (rw, nosuid, nodev, exec, size=64m)            │
+│   • Limits: 512m RAM, 1 CPU, 64 PIDs                            │
+│   • Runner: /usr/local/bin/run-submission (run.sh)              │
+│       ├─► Compilation timeout (10s) with clean diagnostics      │
+│       └─► GNU timeout (3s) with signal escalation               │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                 Capture stdout, stderr, exit code
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Database Persistence                       │
+│   • Prisma updates Submission record:                           │
+│       status: "completed" | "error"                             │
+│       verdict: "Accepted" | "Time Limit Exceeded" | etc.        │
+│       exitCode, executionTimeMs, startedAt, completedAt         │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                   Polling: GET /api/submission/:id
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Client Output Display                      │
+│   • Renders status badge, elapsed time, exit code               │
+│   • Shows separated Compiler Diagnostics and Standard Output    │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-### Detailed Architecture
+## 🔒 Sandbox Security Hardening
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        BROWSER (Client)                         │
-│   Monaco Editor + React UI  →  Polling /api/submission/:id      │
-└────────────────────────┬────────────────────────────────────────┘
-                         │  HTTP POST /api/submit
-                         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    NEXT.JS API ROUTES (Server)                  │
-│                                                                 │
-│   /api/submit        →  Creates Submission in PostgreSQL        │
-│                          Pushes job → BullMQ Queue (Redis)      │
-│                                                                 │
-│   /api/submission/:id →  Reads Submission status from DB        │
-└────────────────────────┬────────────────────────────────────────┘
-                         │  Job enqueued
-                         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     BULLMQ WORKER PROCESS                       │
-│                   (tsx ./app/lib/worker.ts)                      │
-│                                                                 │
-│   1. Dequeue job                                                │
-│   2. Fetch Submission from DB                                   │
-│   3. Update status → "running"                                  │
-│   4. Execute code in isolated child_process                     │
-│   5. Capture stdout / stderr                                    │
-│   6. Update status → "completed" or "error"                     │
-└────────────────────────┬────────────────────────────────────────┘
-                         │
-                         ▼
-          ┌──────────────────────────┐
-          │      PostgreSQL (DB)     │
-          │   Submission table       │
-          │   - id, code, language   │
-          │   - status, output       │
-          │   - stdin, stderr        │
-          └──────────────────────────┘
-```
+CodeArena enforces defense-in-depth isolation across multiple layers:
 
-### Key Design Decisions
-
-| Decision | Why |
-|----------|-----|
-| **BullMQ + Redis** for job queue | Decouples submission ingestion from execution. Handles bursts without dropping requests. Retry logic built-in. |
-| **Separate Worker Process** | Code execution is CPU-heavy and potentially infinite-looping. Isolating it prevents blocking the Next.js server. |
-| **Polling on client** | Simple, stateless, compatible with serverless/edge deployments. No WebSocket infrastructure needed. |
-| **Prisma + PostgreSQL** | Type-safe DB access, easy migrations, ACID guarantees for submission state transitions. |
-| **child_process.execSync** with timeout | Enforces a strict 5-second TLE (Time Limit Exceeded) for each submission. |
+| Security Vector | Implementation | Risk Mitigated |
+|-----------------|----------------|----------------|
+| **Network Isolation** | `--network=none` | Disables network interfaces; prevents data exfiltration, port scanning, botnets |
+| **Privilege Escalation** | `--security-opt=no-new-privileges:true` | Prevents setuid binaries or privilege escalation |
+| **User Identity** | `--user=10001:10001` | Runs as unprivileged `sandbox` user, never `root` |
+| **Capability Dropping**| `--cap-drop=ALL` | Drops all Linux kernel capabilities (chroot, net admin, sys_admin, etc.) |
+| **Root Filesystem** | `--read-only` | Root filesystem cannot be modified or corrupted by user code |
+| **Source Mount** | `type=bind,source=...,target=/workspace,readonly` | User code is mounted strictly read-only (`mode: 0444`) |
+| **Temporary Files** | `--tmpfs /tmp:rw,nosuid,nodev,exec,size=64m` | In-memory temporary filesystem destroyed on container exit |
+| **Process Limits** | `--pids-limit=64` | Completely neutralizes fork bombs (`:(){ :|:& };:`) |
+| **Memory Ceiling** | `--memory=512m --memory-swap=512m` | Hard memory limits prevent host out-of-memory (OOM) crashes |
+| **CPU Ceiling** | `--cpus=1` | Limits core usage; prevents single submission CPU starvation |
+| **Output Limits** | `MAX_OUTPUT_BYTES = 1024 * 1024` (1 MiB) | Stops infinite stdout flooding (`yes`, infinite printing loops) |
+| **No Shell Injection**| `spawn("docker", args, { shell: false })` | Arguments passed as array without shell interpolation |
 
 ---
 
 ## ✨ Features
 
-### Core
-- 🖥️ **Monaco Editor** — The same editor that powers VS Code, with syntax highlighting, IntelliSense, and language modes for C++, C, and Python
-- ⚡ **Async Execution Pipeline** — Submissions are queued and executed asynchronously via BullMQ workers
-- 📊 **Real-time Status Polling** — Client polls `/api/submission/:id` until execution completes
-- 🔒 **Isolated Code Execution** — Executes user code in a separate worker process with execution timeouts, temporary workspaces, and automatic cleanup
-- 🗂️ **Persistent Submission History** — Every run is stored in PostgreSQL with full metadata
-
 ### Supported Languages
-| Language | Compiler/Runtime | File Extension |
-|----------|-----------------|---------------|
-| C++ | `g++` | `.cpp` |
-| C | `gcc` | `.c` |
-| Python | `python3` | `.py` |
+| Language | Standard / Version | Compiler / Runtime | Flags |
+|:---|:---|:---|:---|
+| **C++** | C++17 | `g++` | `-std=c++17 -O2 -pipe` |
+| **C** | C11 | `gcc` | `-std=c11 -O2 -pipe` |
+| **Python** | Python 3.11 | `python3` | `-u` (unbuffered streaming) |
 
-### Execution Features
-- ✅ Compilation error detection (C, C++, Python SyntaxError)
-- ✅ Runtime error detection
-- ✅ Time Limit Exceeded (TLE) detection via `error.killed`
-- ✅ Custom stdin support
-- ✅ Separate stdout and stderr capture
-- ✅ Temp directory cleanup after execution
+### Execution Capabilities
+- ✅ **Real-time Result Polling** with race-condition prevention (`activeRunIdRef`).
+- ✅ **Compiler Diagnostic Parsing** with dedicated headings and error section formatting.
+- ✅ **Unbuffered Output Streaming** ensuring stdout is never lost before process exit.
+- ✅ **Custom Standard Input (stdin)** passed securely via piped streams.
+- ✅ **Automatic Ephemeral Cleanup** on both host temporary directories and container instances.
 
 ---
 
 ## 🛠️ Tech Stack
 
 ### Frontend
-| Technology | Purpose |
-|-----------|---------|
-| **Next.js 15** | Full-stack React framework with App Router |
-| **@monaco-editor/react** | VS Code-grade code editor in the browser |
-| **Tailwind CSS v4** | Utility-first styling with CSS variables |
-| **Radix UI** | Accessible, unstyled component primitives |
-| **Shadcn/ui** | Pre-built component library on top of Radix |
-| **Figtree** | Custom Google Font for clean UI typography |
+- **Framework**: [Next.js 15 (App Router)](https://nextjs.org/)
+- **Code Editor**: [@monaco-editor/react](https://github.com/suren-atoyan/monaco-react)
+- **Styling**: Vanilla CSS tokens & utilities tailored for dark mode (CodeChef/LeetCode aesthetics) + Tailwind CSS v4
+- **Components**: Radix UI primitives & Lucide/Hugeicons
 
-### Backend
-| Technology | Purpose |
-|-----------|---------|
-| **Next.js API Routes** | REST endpoints for submission handling |
-| **Prisma ORM** | Type-safe database client + migrations |
-| **PostgreSQL** | Relational database for persistent submission storage |
-| **BullMQ** | Job queue built on Redis for async task processing |
-| **IORedis** | Redis client for BullMQ connections |
+### Backend & Queue
+- **API Runtime**: Next.js Server Components & Route Handlers
+- **Task Queue**: [BullMQ 5.x](https://bullmq.io/)
+- **Cache & Broker**: [Redis](https://redis.io/) (Local or [Upstash](https://upstash.com/))
+- **Worker Runtime**: [tsx](https://github.com/privatenumber/tsx) running native TypeScript in background process
 
-### Infrastructure
-| Technology | Purpose |
-|-----------|---------|
-| **Redis** | Job queue backing store + BullMQ broker |
-| **`child_process`** | OS-level isolated code execution |
-| **`tsx`** | TypeScript-native worker script runner |
-| **`os.tmpdir()`** | Ephemeral temp dirs for code file isolation |
+### Database & ORM
+- **Database**: [PostgreSQL](https://www.postgresql.org/) (Local or [Neon Serverless Postgres](https://neon.tech/))
+- **ORM**: [Prisma 6.x](https://www.prisma.io/)
+
+### Sandbox Runtime
+- **Container Engine**: [Docker Desktop](https://www.docker.com/) / Docker Engine
+- **Base Image**: `debian:bookworm-slim`
+- **Runner**: Shell runner with GNU `timeout` and strict error handling (`set -eu`)
 
 ---
 
 ## ⚙️ How It Works
 
-### End-to-End Submission Flow
-
+### Execution Telemetry Flow
 ```
-User writes code in Monaco Editor
-         │
-         ▼
-POST /api/submit
-  { code, language, stdin, problemId }
-         │
-         ├─► Validate inputs (language, required fields)
-         ├─► Create Submission record in PostgreSQL (status: "pending")
-         ├─► Enqueue job to BullMQ: { submissionId }
-         └─► Return { submissionId } to client
-
-Client receives submissionId
-         │
-         ▼
-Poll GET /api/submission/:id every ~1.5s
-         │
-         └─► Wait until status !== "pending" && status !== "running"
-
-BullMQ Worker picks up the job
-         │
-         ├─► Fetch Submission from DB
-         ├─► Update status → "running"
-         ├─► Create temp directory (mkdtempSync)
-         ├─► Write code to temp file
-         ├─► Compile (C/C++) or skip (Python)
-         ├─► Execute with stdin piped
-         ├─► Capture stdout/stderr
-         ├─► Delete temp directory (cleanup)
-         └─► Update Submission: status, output, stderr
-
-Client poll returns completed Submission
-         │
-         └─► Display output/errors in OutputPanel
+1. Client POST /api/submit
+   └─► Returns { submissionId }
+2. Worker dequeues { submissionId }
+   ├─► Updates status: "running", clears stale fields
+   ├─► Writes host temp file: /temp/codearena-[uuid]/code.[ext]
+   ├─► Runs Docker container: codearena-[uuid]
+   ├─► run.sh compiles (gcc/g++) within 10s compile limit
+   │     └─ If compile fails: exits with code 65 [COMPILATION_ERROR]
+   ├─► run.sh executes binary under timeout 3s
+   │     └─ If loop/slow: exits with code 124 (Time Limit Exceeded)
+   ├─► Executor reads stdout/stderr streams up to 1 MiB
+   └─► Worker commits telemetry to PostgreSQL:
+         • status: "completed" | "error"
+         • verdict: "Accepted" | "Compilation Error" | "Time Limit Exceeded" | etc.
+         • exitCode: number | null
+         • executionTimeMs: number (duration in ms)
+         • startedAt / completedAt: ISO Timestamps
+3. Client polls /api/submission/:id
+   └─► Displays structured verdict banner, execution duration, and stream output
 ```
-
-### Isolated Code Execution (executor.ts)
-
-Each language has its own execution path:
-
-**C++**
-```
-Write code.cpp → g++ compile → run main.exe < input.txt
-```
-**C**
-```
-Write code.c → gcc compile → run main.exe < input.txt
-```
-**Python**
-```
-Write code.py → python3 code.py < input.txt
-```
-
-All executions:
-- Timeout enforced at **5000ms**
-- Piped stdio (no terminal interaction)
-- Temp directory auto-cleaned in `finally` block
-- `error.killed === true` → TLE verdict
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
+- **Node.js** $\ge$ 18.18.0
+- **Docker Desktop** running locally
+- **PostgreSQL** database (Local or Neon)
+- **Redis** server (Local or Upstash)
 
-Make sure you have the following installed:
-
-```bash
-node >= 18.18.0
-npm >= 9
-g++         # For C++ execution
-gcc         # For C execution
-python3     # For Python execution
-redis       # Local Redis instance or Upstash
-postgresql  # Local or cloud (Railway, Supabase, Neon)
-```
-
-### Installation
-
-**1. Clone the repository**
+### 1. Clone & Install
 ```bash
 git clone https://github.com/yourusername/codearena.git
 cd codearena
-```
-
-**2. Install dependencies**
-```bash
 npm install
 ```
 
-**3. Set up environment variables**
-```bash
-cp .env.example .env.local
-# Fill in your DATABASE_URL and REDIS_URL
+### 2. Configure Environment Variables
+Create `.env` in the root directory:
+```env
+DATABASE_URL="postgresql://user:password@localhost:5432/codearena?sslmode=prefer"
+REDIS_URL="redis://localhost:6379"
 ```
 
-**4. Run database migrations**
+### 3. Build the Docker Sandbox Image
+Before executing code, build the local sandbox image:
 ```bash
-npx prisma migrate dev
+docker build -f docker/sandbox/DockerFile -t codearena-sandbox:local docker/sandbox
+```
+
+### 4. Push Database Schema
+```bash
+npx prisma db push
 npx prisma generate
 ```
 
-**5. Start Redis (if running locally)**
-```bash
-redis-server
-```
+### 5. Start Services (In Two Terminals)
 
-**6. Start the BullMQ Worker (separate terminal)**
+**Terminal 1 — BullMQ Execution Worker:**
 ```bash
 npm run worker
-# → "Worker started — listening for jobs..."
+# Output: Worker started — listening for jobs...
 ```
 
-**7. Start the Next.js dev server**
+**Terminal 2 — Next.js Development Server:**
 ```bash
 npm run dev
-# → Open http://localhost:3000
+# Output: Ready on http://localhost:3000
 ```
+
+Open [http://localhost:3000](http://localhost:3000) to start coding!
 
 ---
 
 ## 🔐 Environment Variables
 
-Create a `.env` file in the project root:
-
-```env
-# PostgreSQL Connection String
-DATABASE_URL="postgresql://user:password@localhost:5432/codearena"
-
-# Redis Connection URL (local or Upstash)
-REDIS_URL="redis://localhost:6379"
-```
-
-### Cloud Providers
-
-| Service | DATABASE_URL format |
-|---------|-------------------|
-| **Neon** | `postgresql://user:pass@ep-xxx.neon.tech/dbname?sslmode=require` |
-| **Supabase** | `postgresql://postgres:[password]@db.xxx.supabase.co:5432/postgres` |
-| **Railway** | Provided via Railway dashboard |
-
-| Service | REDIS_URL format |
-|---------|----------------|
-| **Upstash** | `rediss://default:token@xxx.upstash.io:6379` |
-| **Railway Redis** | Provided via Railway dashboard |
-| **Local** | `redis://localhost:6379` |
+| Variable | Description | Example |
+|:---|:---|:---|
+| `DATABASE_URL` | PostgreSQL connection string with SSL parameters | `postgresql://user:pass@host/db?sslmode=require` |
+| `REDIS_URL` | Redis connection URL for BullMQ queue management | `redis://127.0.0.1:6379` or `rediss://default:...@upstash.io:6379` |
 
 ---
 
@@ -364,43 +328,44 @@ codearena/
 ├── app/
 │   ├── api/
 │   │   ├── submit/
-│   │   │   └── route.ts          # POST /api/submit — creates submission + enqueues job
+│   │   │   └── route.ts          # POST /api/submit — queues code execution
 │   │   └── submission/
 │   │       └── [id]/
-│   │           └── route.ts      # GET /api/submission/:id — polls submission status
+│   │           └── route.ts      # GET /api/submission/:id — returns execution state
 │   ├── lib/
-│   │   ├── executor.ts           # Isolated code execution (C, C++, Python)
+│   │   ├── executor.ts           # Docker sandbox runner, timeouts & output caps
 │   │   ├── prisma.ts             # Prisma client singleton
-│   │   ├── queue.ts              # BullMQ queue instance
-│   │   └── worker.ts             # BullMQ worker process (run separately)
-│   ├── globals.css               # Tailwind v4 + CSS variables
-│   ├── layout.tsx                # Root layout with Figtree font
-│   └── page.tsx                  # Home page
+│   │   ├── queue.ts              # BullMQ queue definition
+│   │   └── worker.ts             # Background worker process
+│   ├── globals.css               # Design system tokens & layout styling
+│   ├── layout.tsx                # App root layout
+│   └── page.tsx                  # Main IDE workspace & polling logic
 │
 ├── components/
-│   ├── CodeEditor.tsx            # Monaco Editor wrapper
-│   ├── header.tsx                # App header
-│   ├── outputPanal.tsx           # Output display panel
-│   ├── stdinInput.tsx            # Standard input textarea
-│   └── ui/                       # Shadcn/Radix UI components
-│       ├── badge.tsx
-│       ├── button.tsx
-│       ├── card.tsx
-│       ├── select.tsx
-│       ├── separator.tsx
-│       ├── tabs.tsx
-│       └── textarea.tsx
+│   ├── CodeEditor.tsx            # Monaco Editor wrapper with language config
+│   ├── EditorSettingsModal.tsx   # Editor settings modal (font size, tab size, wrap)
+│   ├── Header.tsx                # Top navigation & running state indicator
+│   ├── outputPanal.tsx           # Verdict, diagnostics & stdout display panel
+│   └── stdinInput.tsx            # Standard input textarea
+│
+├── docker/
+│   └── sandbox/
+│       ├── DockerFile            # Debian bookworm-slim unprivileged image
+│       └── run.sh                # GCC/G++/Python runner with GNU timeout
 │
 ├── prisma/
-│   ├── schema.prisma             # Database schema
-│   └── migrations/               # Migration history
+│   └── schema.prisma             # PostgreSQL schema definition
 │
-├── public/                       # Static assets
-├── .env                          # Environment variables (gitignored)
-├── next.config.ts
-├── tailwind.config.ts
+├── public/
+│   ├── Hld.png                   # High-Level Architecture Diagram
+│   └── screenshots/              # Application demo screenshots
+│       ├── c-editor.png
+│       ├── cpp-editor.png
+│       └── python-editor.png
+│
+├── package.json
 ├── tsconfig.json
-└── package.json
+└── README.md
 ```
 
 ---
@@ -408,85 +373,61 @@ codearena/
 ## 📡 API Reference
 
 ### `POST /api/submit`
-
-Submit code for execution.
+Enqueues a new code submission for execution.
 
 **Request Body**
 ```json
 {
-  "code": "string",         // Source code
-  "language": "cpp|c|python",
-  "stdin": "string",        // Standard input (optional)
-  "problemId": "number"     // Problem ID (optional)
+  "code": "#include <iostream>\nint main() { std::cout << 42; return 0; }",
+  "language": "cpp",
+  "stdin": "10 20",
+  "problemId": null
 }
 ```
 
-**Response** `200 OK`
+**Response (`200 OK`)**
 ```json
 {
-  "submissionId": "uuid-string"
+  "submissionId": "5639317b-644e-4ac1-a036-c29bdc3ce82f"
 }
 ```
-
-**Error Responses**
-| Status | Reason |
-|--------|--------|
-| `400` | Missing required fields |
-| `400` | Unsupported language |
-| `500` | Internal server error |
 
 ---
 
 ### `GET /api/submission/:id`
+Retrieves execution status and telemetry for a given submission.
 
-Poll for submission result.
-
-**Response** `200 OK`
+**Response (`200 OK` — Terminal State)**
 ```json
 {
-  "id": "uuid",
+  "id": "5639317b-644e-4ac1-a036-c29bdc3ce82f",
   "language": "cpp",
   "problemId": null,
-  "status": "completed",    // "pending" | "running" | "completed" | "error"
-  "output": "Hello World\n",
+  "status": "completed",
+  "output": "42\n",
   "stderr": "",
-  "createdAt": "2025-01-01T00:00:00.000Z"
+  "verdict": "Accepted",
+  "exitCode": 0,
+  "executionTimeMs": 1822,
+  "startedAt": "2026-10-11T17:41:54.653Z",
+  "completedAt": "2026-10-11T17:41:57.510Z",
+  "createdAt": "2026-10-11T17:41:54.000Z"
 }
 ```
 
-**Error Responses**
-| Status | Reason |
-|--------|--------|
-| `404` | Submission not found |
-| `500` | Internal server error |
-
 ---
 
-## 🔬 Code Execution Flow
+## ⚖️ Verdict System
 
-### Executor Deep Dive (`app/lib/executor.ts`)
-
-```typescript
-// Each submission gets its own isolated temp directory
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "codearena-"))
-
-// Files created per execution:
-// ├── input.txt     (stdin content)
-// ├── code.cpp      (user source code)  ← varies by language
-// └── main.exe      (compiled binary)   ← C/C++ only
-
-// All cleanup happens in finally block:
-fs.rmSync(tempDir, { recursive: true, force: true })
-```
-
-### Verdict System
-
-| Verdict | Condition |
-|---------|-----------|
-| `null` (Accepted) | Execution successful, output captured |
-| `"Compilation Error"` | `g++`/`gcc` exits non-zero, or Python `SyntaxError` |
-| `"Runtime Error"` | Program crashes during execution |
-| `"Runtime Error"` (TLE) | `error.killed === true` (timeout exceeded) |
+| Verdict | Description | Trigger Condition | Exit Code |
+|:---|:---|:---|:---|
+| **`Accepted`** | Program executed cleanly to completion | Program exit with code `0` | `0` |
+| **`Compilation Error`** | Code failed to compile | GCC/G++ non-zero exit | `1` / `65` |
+| **`Runtime Error`** | Process crashed or threw unhandled exception | Division by zero, segfault (SIGSEGV), NZEC | Non-zero (`1`, `134`, `139`) |
+| **`Time Limit Exceeded`** | Program exceeded execution limit | GNU timeout reached (3s) or container outer deadline (15s) | `124` / `null` |
+| **`Output Limit Exceeded`** | Combined output stream exceeded limit | Output buffer $> 1\text{ MiB}$ | `null` |
+| **`Execution Error`** | Infrastructure or Docker startup failure | Docker exit code 125 or process spawn error | `125` / `null` |
+| **`Unsupported Language`** | Requested language not supported | Language is not `cpp`, `c`, or `python` | HTTP `400` |
 
 ---
 
@@ -494,61 +435,80 @@ fs.rmSync(tempDir, { recursive: true, force: true })
 
 ```prisma
 model Submission {
-  id        String   @id @default(uuid())
-  code      String                          // User's source code
-  language  String                          // "cpp" | "c" | "python"
-  problemId Int?                            // Optional problem association
-  stdin     String?                         // Custom input
-  status    String   @default("queued")     // queued → running → completed|error
-  output    String?                         // stdout result
-  stderr    String?                         // stderr or compilation errors
-  createdAt DateTime @default(now())
+  id              String    @id @default(uuid())
+  code            String                          // User source code
+  language        String                          // "cpp" | "c" | "python"
+  stdin           String?                         // Optional stdin
+  status          String    @default("queued")     // queued → running → completed | error
+  output          String?                         // Captured stdout
+  stderr          String?                         // Captured stderr / compiler output
+  verdict         String?                         // "Accepted" | "Time Limit Exceeded" | etc.
+  exitCode        Int?                            // Process exit code
+  executionTimeMs Int?                            // Duration in milliseconds
+  startedAt       DateTime?                       // Execution start timestamp
+  completedAt     DateTime?                       // Execution end timestamp
+  problemId       Int?                            // Optional problem reference
+  createdAt       DateTime  @default(now())
 }
 ```
 
-### Status State Machine
+---
 
-```
-"pending" → [Worker picks up] → "running" → [Execution completes] → "completed"
-                                                                   → "error"
-```
+## 📋 Production Readiness Checklist
+
+> **Progress: 0 / 20 checked**
+
+### 1. Structured Logging (Phase 1)
+- [ ] Reusable JSON logger with log levels
+- [ ] Submission ID and job ID correlation
+- [ ] Execution lifecycle and error logs
+- [ ] Secrets and source code redaction
+
+### 2. Reliability (Phase 2)
+- [ ] Explicit BullMQ retry and backoff policy
+- [ ] Job lifecycle and stuck-job recovery
+- [ ] Reliable container cleanup
+- [ ] Database failure handling and consistent status transitions
+
+### 3. Security Hardening (Phase 3)
+- [ ] CPU, memory, PID, execution and output limits
+- [ ] Validate input and language on the server
+- [ ] Container isolation and least privilege
+- [ ] Request rate limits and abuse protection
+
+### 4. Monitoring (Phase 4)
+- [ ] Health/readiness checks for API, Redis, database and worker
+- [ ] Queue depth and job failure metrics
+- [ ] Execution latency and timeout metrics
+- [ ] Alerts for repeated failures and stuck jobs
+
+### 5. Deployment Readiness (Phase 5)
+- [ ] Production environment variables and secret management
+- [ ] Reproducible Docker image builds
+- [ ] Database migration strategy
+- [ ] Automated tests, CI, deployment and rollback checks
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome and appreciated!
+Contributions are welcome! Please follow these steps:
 
-```bash
-# 1. Fork the repo
-# 2. Create a feature branch
-git checkout -b feat/my-awesome-feature
-
-# 3. Commit with conventional commits
-git commit -m "feat: add Java language support"
-
-# 4. Push and open a PR
-git push origin feat/my-awesome-feature
-```
-
-### Development Tips
-
-- Run the worker and Next.js dev server in **two separate terminals**
-- Test execution locally with `g++`, `gcc`, and `python3` installed
-- Use `npx prisma studio` to inspect the database during development
-- BullMQ jobs can be monitored with [Bull Board](https://github.com/felixmosh/bull-board)
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feat/my-new-feature`
+3. Commit your changes: `git commit -m "feat: add Rust support"`
+4. Push to branch: `git push origin feat/my-new-feature`
+5. Open a Pull Request
 
 ---
 
 ## 📄 License
 
-⚠️ This repository is published for learning and reference purposes. Re-uploading this codebase, removing attribution, or presenting it as your own work is strongly discouraged
-
----
+⚠️ This repository is published for learning and reference purposes. Re-uploading this codebase, removing attribution, or presenting it as your own work is strongly discouraged.
 
 <div align="center">
 
-**Built with ❤️ by a developer who wanted to understand how Codeforces/Leetcode like platforms actually works.**
+**Built with ❤️ for developers interested in judge systems and system design.**
 
 ⭐ Star this repo if you found it useful!
 
