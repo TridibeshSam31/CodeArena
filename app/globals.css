@@ -720,6 +720,37 @@ html, body {
   margin-bottom: 8px;
 }
 
+.cc-verdict-header {
+  margin-bottom: 6px;
+}
+
+.cc-verdict-summary {
+  margin: 2px 0 6px 0;
+  font-size: 12px;
+  color: var(--cc-text-secondary);
+  line-height: 1.4;
+  font-family: var(--font-sans);
+}
+
+.cc-output-stream-container {
+  margin-top: 6px;
+  margin-bottom: 8px;
+}
+
+.cc-stream-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--cc-text-muted);
+  margin-bottom: 3px;
+  font-family: var(--font-sans);
+}
+
+.cc-stream-label.error {
+  color: #ff7b72;
+}
+
 /* ── SCROLLBARS ── */
 ::-webkit-scrollbar {
   width: 6px;

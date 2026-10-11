@@ -53,6 +53,7 @@ export default function Home() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollCountRef = useRef<number>(0);
   const startTimeRef = useRef<number>(0);
+  const activeRunIdRef = useRef<number>(0);
   const handleSubmitRef = useRef<() => void>(() => {});
   const workspaceRef = useRef<HTMLDivElement>(null);
 
@@ -91,6 +92,8 @@ export default function Home() {
     // Stop any existing polling before initiating new run
     stopPolling();
 
+    const currentRunId = ++activeRunIdRef.current;
+
     setStatus("pending");
     setOutput("");
     setStderr("");
@@ -115,6 +118,8 @@ export default function Home() {
         }),
       });
 
+      if (activeRunIdRef.current !== currentRunId) return;
+
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         setStatus("error");
@@ -125,13 +130,20 @@ export default function Home() {
       }
 
       const { submissionId } = await res.json();
+      if (activeRunIdRef.current !== currentRunId) return;
 
       pollingRef.current = setInterval(async () => {
+        if (activeRunIdRef.current !== currentRunId) {
+          stopPolling();
+          return;
+        }
+
         pollCountRef.current += 1;
 
         // Abort after 45s of waiting in queue
         if (pollCountRef.current > 38) {
           stopPolling();
+          if (activeRunIdRef.current !== currentRunId) return;
           setStatus("error");
           setDispatchError("Execution job timed out waiting in queue after 45 seconds.");
           setExecTime(Date.now() - startTimeRef.current);
@@ -140,11 +152,14 @@ export default function Home() {
 
         try {
           const pollRes = await fetch(`/api/submission/${submissionId}`);
+          if (activeRunIdRef.current !== currentRunId) return;
+
           if (!pollRes.ok) {
             throw new Error(`Polling returned HTTP ${pollRes.status}`);
           }
 
           const data = await pollRes.json();
+          if (activeRunIdRef.current !== currentRunId) return;
 
           if (data.status === "running") {
             setStatus("running");
@@ -165,12 +180,14 @@ export default function Home() {
             );
           }
         } catch {
+          if (activeRunIdRef.current !== currentRunId) return;
           stopPolling();
           setStatus("error");
           setDispatchError("Network connection interrupted while checking execution status.");
         }
       }, 1200);
     } catch {
+      if (activeRunIdRef.current !== currentRunId) return;
       setStatus("error");
       setDispatchError("Could not reach backend API server. Verify server is running.");
     }

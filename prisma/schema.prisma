@@ -7,15 +7,17 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+
+
 model Submission {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   code            String
   language        String
   stdin           String?
-  status          String   @default("queued")
+  status          String    @default("queued")
   output          String?
   stderr          String?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime  @default(now())
   problemId       Int?
 
   verdict         String?
@@ -23,4 +25,7 @@ model Submission {
   executionTimeMs Int?
   startedAt       DateTime?
   completedAt     DateTime?
+
+ 
 }
+

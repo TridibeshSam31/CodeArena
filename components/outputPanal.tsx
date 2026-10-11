@@ -15,26 +15,83 @@ export interface OutputPanelProps {
   execTime?: number | null;
 }
 
-function getVerdictClass(verdict: string): "accepted" | "error" | "timeout" | "neutral" {
-  const normalized = verdict.toLowerCase().trim();
-  if (normalized === "accepted") {
-    return "accepted";
+interface VerdictDetails {
+  heading: string;
+  badgeClass: "accepted" | "error" | "timeout" | "system" | "neutral";
+  summary?: string;
+}
+
+function resolveVerdictDetails(
+  verdict: string | null | undefined,
+  status: SubmissionStatus
+): VerdictDetails | null {
+  if (status === "idle" || status === "pending" || status === "running") {
+    return null;
   }
-  if (
-    normalized.includes("time limit") ||
-    normalized.includes("timeout") ||
-    normalized.includes("memory limit")
-  ) {
-    return "timeout";
+
+  const v = (verdict || "").trim();
+  const lower = v.toLowerCase();
+
+  if (lower === "accepted" || (!v && status === "completed")) {
+    return {
+      heading: "Accepted",
+      badgeClass: "accepted",
+      summary: "Program executed successfully.",
+    };
   }
-  if (
-    normalized.includes("error") ||
-    normalized.includes("failed") ||
-    normalized.includes("wrong answer")
-  ) {
-    return "error";
+
+  if (lower.includes("compilation error")) {
+    return {
+      heading: "Compilation Error",
+      badgeClass: "error",
+      summary: "Code failed to compile. See compiler diagnostics below.",
+    };
   }
-  return "neutral";
+
+  if (lower.includes("time limit") || lower.includes("timeout")) {
+    return {
+      heading: "Time Limit Exceeded",
+      badgeClass: "timeout",
+      summary: "Program exceeded the execution time limit (3.0s).",
+    };
+  }
+
+  if (lower.includes("output limit")) {
+    return {
+      heading: "Output Limit Exceeded",
+      badgeClass: "timeout",
+      summary: "Program output exceeded the maximum allowed limit (1 MiB).",
+    };
+  }
+
+  if (lower.includes("runtime error")) {
+    return {
+      heading: "Runtime Error",
+      badgeClass: "error",
+      summary: "Program terminated abnormally or encountered an unhandled exception.",
+    };
+  }
+
+  if (lower.includes("unsupported")) {
+    return {
+      heading: "Unsupported Language",
+      badgeClass: "error",
+      summary: "The specified programming language is not supported.",
+    };
+  }
+
+  if (lower.includes("execution error") || lower.includes("system") || (!v && status === "error")) {
+    return {
+      heading: "Execution Error",
+      badgeClass: "system",
+      summary: "The sandbox execution environment encountered an error.",
+    };
+  }
+
+  return {
+    heading: v,
+    badgeClass: status === "error" ? "error" : "neutral",
+  };
 }
 
 export default function OutputPanel({
@@ -48,8 +105,10 @@ export default function OutputPanel({
   execTime,
 }: OutputPanelProps) {
   const isRunning = status === "pending" || status === "running";
+  const verdictDetails = resolveVerdictDetails(verdict, status);
+
   const hasMetadata =
-    executionTimeMs !== undefined && executionTimeMs !== null ||
+    (executionTimeMs !== undefined && executionTimeMs !== null) ||
     (exitCode !== undefined && exitCode !== null) ||
     (!isRunning && execTime !== null && execTime !== undefined);
 
@@ -63,7 +122,7 @@ export default function OutputPanel({
         {/* Loading status */}
         {isRunning && (
           <div className="cc-output-status-label timeout">
-            {status === "pending" ? "Queued for execution..." : "Executing program..."}
+            {status === "pending" ? "Queued for execution..." : "Executing inside sandbox..."}
           </div>
         )}
 
@@ -74,10 +133,15 @@ export default function OutputPanel({
           </div>
         )}
 
-        {/* Structured execution verdict if provided by backend */}
-        {verdict && (
-          <div className={`cc-output-status-label ${getVerdictClass(verdict)}`}>
-            {verdict}
+        {/* Structured execution verdict heading & summary */}
+        {!isRunning && verdictDetails && (
+          <div className="cc-verdict-header">
+            <div className={`cc-output-status-label ${verdictDetails.badgeClass}`}>
+              {verdictDetails.heading}
+            </div>
+            {verdictDetails.summary && (
+              <p className="cc-verdict-summary">{verdictDetails.summary}</p>
+            )}
           </div>
         )}
 
@@ -100,23 +164,36 @@ export default function OutputPanel({
           </div>
         )}
 
-        {/* Stderr stream */}
+        {/* Stderr / Compiler Diagnostics Stream */}
         {stderr && (
-          <pre className="cc-output-pre error">{stderr}</pre>
+          <div className="cc-output-stream-container">
+            <div className="cc-stream-label error">
+              {verdictDetails?.heading === "Compilation Error"
+                ? "Compiler Diagnostics:"
+                : "Standard Error / Diagnostics:"}
+            </div>
+            <pre className="cc-output-pre error">{stderr}</pre>
+          </div>
         )}
 
         {/* Stdout stream */}
         {output && (
-          <pre className="cc-output-pre">{output}</pre>
+          <div className="cc-output-stream-container">
+            {stderr && <div className="cc-stream-label">Standard Output:</div>}
+            <pre className="cc-output-pre">{output}</pre>
+          </div>
         )}
 
         {/* Clean empty notification if completed with no streams */}
-        {status === "completed" && !output && !stderr && !dispatchError && (
+        {!isRunning && status === "completed" && !output && !stderr && !dispatchError && (
           <div className="cc-output-empty">Program finished with no output.</div>
+        )}
+
+        {/* Empty streams on error status */}
+        {!isRunning && status === "error" && !output && !stderr && !dispatchError && (
+          <div className="cc-output-empty">Execution terminated with no output or diagnostics.</div>
         )}
       </div>
     </div>
   );
 }
-
-

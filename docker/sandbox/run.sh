@@ -20,10 +20,14 @@ fi
 
 # A basic execution timeout for local sandbox tests.
 timeout_seconds="${SANDBOX_TIMEOUT_SECONDS:-3}"
+compile_timeout="${SANDBOX_COMPILE_TIMEOUT_SECONDS:-10}"
 
 case "$language" in
     c)
-        gcc -std=c11 -O2 -pipe "$source_file" -o /tmp/program
+        if ! timeout --signal=TERM --kill-after=1s "${compile_timeout}s" gcc -std=c11 -O2 -pipe "$source_file" -o /tmp/program; then
+            echo "[COMPILATION_ERROR]" >&2
+            exit 65
+        fi
         exec timeout \
             --signal=TERM \
             --kill-after=1s \
@@ -32,7 +36,10 @@ case "$language" in
         ;;
 
     cpp)
-        g++ -std=c++17 -O2 -pipe "$source_file" -o /tmp/program
+        if ! timeout --signal=TERM --kill-after=1s "${compile_timeout}s" g++ -std=c++17 -O2 -pipe "$source_file" -o /tmp/program; then
+            echo "[COMPILATION_ERROR]" >&2
+            exit 65
+        fi
         exec timeout \
             --signal=TERM \
             --kill-after=1s \
@@ -45,7 +52,7 @@ case "$language" in
             --signal=TERM \
             --kill-after=1s \
             "${timeout_seconds}s" \
-            python3 "$source_file"
+            python3 -u "$source_file"
         ;;
 
     *)

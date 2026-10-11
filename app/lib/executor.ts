@@ -42,7 +42,7 @@ interface ExecutionResult {
 const DOCKER_IMAGE = "codearena-sandbox:local";
 
 // Outer deadline covers container startup, compilation and execution.
-const EXECUTION_TIMEOUT_MS = 5000;
+const EXECUTION_TIMEOUT_MS = 15000;
 const FORCE_KILL_DELAY_MS = 1000;
 const CLEANUP_TIMEOUT_MS = 1500;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
@@ -148,18 +148,22 @@ function executeInDocker(
             "--pull=never",
             "--interactive",
             "--network=none",
-            "--memory=128m",
-            "--memory-swap=128m",
-            "--cpus=0.5",
+            "--memory=512m",
+            "--memory-swap=512m",
+            "--cpus=1",
             "--pids-limit=64",
             "--cap-drop=ALL",
             "--security-opt=no-new-privileges:true",
             "--read-only",
             "--tmpfs",
-            "/tmp:rw,nosuid,nodev,size=64m",
+           "/tmp:rw,nosuid,nodev,exec,size=64m",
             "--user=10001:10001",
             "--mount",
             `type=bind,source=${mountSource},target=/workspace,readonly`,
+            "-e",
+            "SANDBOX_TIMEOUT_SECONDS=3",
+            "-e",
+            "SANDBOX_COMPILE_TIMEOUT_SECONDS=10",
             DOCKER_IMAGE,
             language,
             sourcePath,
@@ -272,10 +276,8 @@ function executeInDocker(
                 resolve(
                     createResult(startedAt, {
                         stdout,
-                        stderr: `${stderr}${
-                            stderr ? "\n" : ""
-                        }Time Limit Exceeded`,
-                        exitCode,
+                        stderr,
+                        exitCode: null,
                         verdict: "Time Limit Exceeded",
                         error: "Execution exceeded the time limit.",
                     }),
@@ -287,12 +289,26 @@ function executeInDocker(
                 resolve(
                     createResult(startedAt, {
                         stdout,
-                        stderr: `${stderr}${
-                            stderr ? "\n" : ""
-                        }Output limit exceeded.`,
-                        exitCode,
+                        stderr,
+                        exitCode: null,
                         verdict: "Output Limit Exceeded",
                         error: "Combined output exceeded 1 MiB.",
+                    }),
+                );
+                return;
+            }
+
+            // GNU timeout returns exit code 124 when the program exceeds
+            // the execution limit inside the sandbox.
+            if (exitCode === 124) {
+                resolve(
+                    createResult(startedAt, {
+                        success: false,
+                        stdout,
+                        stderr,
+                        exitCode: 124,
+                        verdict: "Time Limit Exceeded",
+                        error: "Execution exceeded the time limit.",
                     }),
                 );
                 return;
@@ -315,29 +331,74 @@ function executeInDocker(
                 return;
             }
 
-            if (exitCode === 0) {
+            // Exit code 126 (cannot invoke) or 127 (not found)
+            if (exitCode === 126 || exitCode === 127) {
                 resolve(
                     createResult(startedAt, {
-                        success: true,
                         stdout,
                         stderr,
-                        exitCode: 0,
-                        verdict: null,
+                        exitCode,
+                        verdict: "Execution Error",
+                        error:
+                            stderr ||
+                            `Sandbox runner command failed with exit code ${exitCode}.`,
                     }),
                 );
                 return;
             }
 
-            // The current run.sh does not distinguish compiler failures
-            // from non-zero exits by the submitted program.
-            // Leave verdict null rather than inventing a classification.
+            // Compilation error handling
+            let cleanStderr = stderr;
+            let isCompilationError = false;
+            if (cleanStderr.includes("[COMPILATION_ERROR]")) {
+                isCompilationError = true;
+                cleanStderr = cleanStderr.replace(/\[COMPILATION_ERROR\]\r?\n?/g, "").trimEnd();
+            } else if (exitCode === 65) {
+                isCompilationError = true;
+            } else if (
+                (language === "c" || language === "cpp") &&
+                exitCode === 1 &&
+                !stdout &&
+                (cleanStderr.includes(": error:") || cleanStderr.includes("fatal error:"))
+            ) {
+                isCompilationError = true;
+            }
+
+            if (isCompilationError) {
+                resolve(
+                    createResult(startedAt, {
+                        success: false,
+                        stdout,
+                        stderr: cleanStderr,
+                        exitCode: 1,
+                        verdict: "Compilation Error",
+                        error: "Compilation failed.",
+                    }),
+                );
+                return;
+            }
+
+            if (exitCode === 0) {
+                resolve(
+                    createResult(startedAt, {
+                        success: true,
+                        stdout,
+                        stderr: cleanStderr,
+                        exitCode: 0,
+                        verdict: "Accepted",
+                    }),
+                );
+                return;
+            }
+
+            // Any other non-zero exit code indicates a Runtime Error
             resolve(
                 createResult(startedAt, {
                     success: false,
                     stdout,
-                    stderr,
+                    stderr: cleanStderr,
                     exitCode,
-                    verdict: null,
+                    verdict: "Runtime Error",
                     error:
                         exitCode === null
                             ? "Docker process ended without an exit code."
@@ -366,6 +427,7 @@ function executeInDocker(
 
         child.once("error", (error) => {
             spawnError = error;
+            void finish(null);
         });
 
         child.once("close", (exitCode) => {
@@ -430,10 +492,24 @@ export default async function executeCode({
         });
     } finally {
         if (tempDir) {
-            fs.rmSync(tempDir, {
-                recursive: true,
-                force: true,
-            });
+            try {
+                fs.rmSync(tempDir, {
+                    recursive: true,
+                    force: true,
+                });
+            } catch {
+                // On Windows, background handles may be held briefly; retry after brief delay
+                const dirToClean = tempDir;
+                setTimeout(() => {
+                    try {
+                        if (fs.existsSync(dirToClean)) {
+                            fs.rmSync(dirToClean, { recursive: true, force: true });
+                        }
+                    } catch {
+                        // ignore background cleanup error
+                    }
+                }, 300);
+            }
         }
     }
 }
