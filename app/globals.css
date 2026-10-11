@@ -660,12 +660,53 @@ html, body {
   color: var(--cc-error);
 }
 
+.cc-output-status-label.accepted {
+  color: #3fb950;
+}
+
 .cc-output-status-label.timeout {
   color: #e3a034;
 }
 
 .cc-output-status-label.system {
   color: #ff9800;
+}
+
+.cc-output-status-label.neutral {
+  color: var(--cc-text-secondary);
+}
+
+.cc-output-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.cc-meta-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--cc-border);
+  border-radius: 3px;
+  color: var(--cc-text-secondary);
+}
+
+.cc-meta-badge.exit-nonzero {
+  color: var(--cc-error);
+  border-color: rgba(248, 81, 73, 0.35);
+  background: var(--cc-error-bg);
+}
+
+.cc-output-empty {
+  color: var(--cc-text-muted);
+  font-style: italic;
+  font-size: 13px;
+  padding: 4px 0;
 }
 
 .cc-dispatch-alert {

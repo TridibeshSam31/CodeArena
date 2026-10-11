@@ -26,6 +26,11 @@ export async function GET(
       status: submission.status,
       output: submission.output,
       stderr: submission.stderr,
+      verdict: submission.verdict,
+      exitCode: submission.exitCode,
+      executionTimeMs: submission.executionTimeMs,
+      startedAt: submission.startedAt,
+      completedAt: submission.completedAt,
       createdAt: submission.createdAt,
     })
 

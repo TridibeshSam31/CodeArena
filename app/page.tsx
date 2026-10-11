@@ -41,6 +41,9 @@ export default function Home() {
   const [stdin, setStdin] = useState("");
   const [output, setOutput] = useState("");
   const [stderr, setStderr] = useState("");
+  const [verdict, setVerdict] = useState<string | null>(null);
+  const [exitCode, setExitCode] = useState<number | null>(null);
+  const [executionTimeMs, setExecutionTimeMs] = useState<number | null>(null);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [execTime, setExecTime] = useState<number | null>(null);
   const [status, setStatus] = useState<SubmissionStatus>("idle");
@@ -85,9 +88,15 @@ export default function Home() {
       return;
     }
 
+    // Stop any existing polling before initiating new run
+    stopPolling();
+
     setStatus("pending");
     setOutput("");
     setStderr("");
+    setVerdict(null);
+    setExitCode(null);
+    setExecutionTimeMs(null);
     setDispatchError(null);
     setExecTime(null);
     startTimeRef.current = Date.now();
@@ -146,7 +155,14 @@ export default function Home() {
             setStatus(data.status);
             setOutput(data.output || "");
             setStderr(data.stderr || "");
-            setExecTime(Date.now() - startTimeRef.current);
+            setVerdict(data.verdict ?? null);
+            setExitCode(data.exitCode ?? null);
+            setExecutionTimeMs(data.executionTimeMs ?? null);
+            setExecTime(
+              data.executionTimeMs !== null && data.executionTimeMs !== undefined
+                ? data.executionTimeMs
+                : Date.now() - startTimeRef.current
+            );
           }
         } catch {
           stopPolling();
@@ -280,6 +296,9 @@ export default function Home() {
             output={output}
             stderr={stderr}
             status={status}
+            verdict={verdict}
+            exitCode={exitCode}
+            executionTimeMs={executionTimeMs}
             dispatchError={dispatchError}
             execTime={execTime}
           />

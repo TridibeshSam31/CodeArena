@@ -4,31 +4,54 @@ import React from "react";
 
 type SubmissionStatus = "idle" | "pending" | "running" | "completed" | "error";
 
-interface OutputPanelProps {
+export interface OutputPanelProps {
   output: string;
   stderr: string;
   status: SubmissionStatus;
+  verdict?: string | null;
+  exitCode?: number | null;
+  executionTimeMs?: number | null;
   dispatchError?: string | null;
   execTime?: number | null;
+}
+
+function getVerdictClass(verdict: string): "accepted" | "error" | "timeout" | "neutral" {
+  const normalized = verdict.toLowerCase().trim();
+  if (normalized === "accepted") {
+    return "accepted";
+  }
+  if (
+    normalized.includes("time limit") ||
+    normalized.includes("timeout") ||
+    normalized.includes("memory limit")
+  ) {
+    return "timeout";
+  }
+  if (
+    normalized.includes("error") ||
+    normalized.includes("failed") ||
+    normalized.includes("wrong answer")
+  ) {
+    return "error";
+  }
+  return "neutral";
 }
 
 export default function OutputPanel({
   output,
   stderr,
   status,
+  verdict,
+  exitCode,
+  executionTimeMs,
   dispatchError,
+  execTime,
 }: OutputPanelProps) {
-  const isTimeLimit =
-    stderr.includes("Time Limit Exceeded") ||
-    stderr.toLowerCase().includes("timed out");
-  const isCompilationError =
-    stderr.toLowerCase().includes("compilation error") ||
-    stderr.toLowerCase().includes("compilation failed") ||
-    stderr.includes("SyntaxError");
-  const isRuntimeError =
-    !isTimeLimit &&
-    !isCompilationError &&
-    (status === "error" || (status === "completed" && !!stderr));
+  const isRunning = status === "pending" || status === "running";
+  const hasMetadata =
+    executionTimeMs !== undefined && executionTimeMs !== null ||
+    (exitCode !== undefined && exitCode !== null) ||
+    (!isRunning && execTime !== null && execTime !== undefined);
 
   return (
     <div className="cc-output-wrapper">
@@ -38,7 +61,7 @@ export default function OutputPanel({
 
       <div className="cc-output-box" role="region" aria-live="polite">
         {/* Loading status */}
-        {(status === "pending" || status === "running") && (
+        {isRunning && (
           <div className="cc-output-status-label timeout">
             {status === "pending" ? "Queued for execution..." : "Executing program..."}
           </div>
@@ -51,22 +74,29 @@ export default function OutputPanel({
           </div>
         )}
 
-        {/* Specific error verdicts */}
-        {isTimeLimit && (
-          <div className="cc-output-status-label timeout">
-            Time Limit Exceeded (5.0s)
+        {/* Structured execution verdict if provided by backend */}
+        {verdict && (
+          <div className={`cc-output-status-label ${getVerdictClass(verdict)}`}>
+            {verdict}
           </div>
         )}
 
-        {isCompilationError && (
-          <div className="cc-output-status-label error">
-            Compilation Error
-          </div>
-        )}
+        {/* Execution metadata row: time & exit code */}
+        {!isRunning && status !== "idle" && hasMetadata && (
+          <div className="cc-output-meta">
+            {executionTimeMs !== null && executionTimeMs !== undefined ? (
+              <span className="cc-meta-badge">Time: {executionTimeMs} ms</span>
+            ) : execTime !== null && execTime !== undefined ? (
+              <span className="cc-meta-badge">Elapsed: {execTime} ms</span>
+            ) : null}
 
-        {isRuntimeError && (
-          <div className="cc-output-status-label error">
-            Runtime Error
+            {exitCode !== null && exitCode !== undefined && (
+              <span
+                className={`cc-meta-badge ${exitCode !== 0 ? "exit-nonzero" : ""}`}
+              >
+                Exit code: {exitCode}
+              </span>
+            )}
           </div>
         )}
 
@@ -78,6 +108,11 @@ export default function OutputPanel({
         {/* Stdout stream */}
         {output && (
           <pre className="cc-output-pre">{output}</pre>
+        )}
+
+        {/* Clean empty notification if completed with no streams */}
+        {status === "completed" && !output && !stderr && !dispatchError && (
+          <div className="cc-output-empty">Program finished with no output.</div>
         )}
       </div>
     </div>
