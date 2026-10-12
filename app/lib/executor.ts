@@ -20,11 +20,14 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { randomUUID } from "crypto";
+import { logger, type StructuredLogger } from "./logger";
 
 interface ExecuteCodeParams {
     code: string;
     language: string;
     input: string;
+    submissionId?: string;
+    jobId?: string;
 }
 
 interface ExecutionResult {
@@ -121,10 +124,78 @@ function runDockerCleanup(args: string[]): Promise<void> {
     });
 }
 
-async function cleanupContainer(containerName: string): Promise<void> {
+async function cleanupContainer(
+    containerName: string,
+    execLogger?: StructuredLogger
+): Promise<void> {
+    execLogger?.debug("Cleaning up Docker container", { containerName });
     // The container might already have exited or been removed.
     await runDockerCleanup(["kill", containerName]);
     await runDockerCleanup(["rm", "-f", containerName]);
+}
+
+/**
+ * Sweeps orphaned Docker containers left behind by abrupt process exits or crashes.
+ * Strictly filters by label `com.codearena.managed=true` to never touch unrelated containers.
+ */
+export async function sweepOrphanContainers(): Promise<number> {
+    return new Promise((resolve) => {
+        let child: ChildProcess;
+        try {
+            child = spawn(
+                "docker",
+                ["ps", "-aq", "--filter", "label=com.codearena.managed=true"],
+                {
+                    shell: false,
+                    windowsHide: true,
+                    stdio: ["ignore", "pipe", "ignore"],
+                }
+            );
+        } catch (error) {
+            logger.warn("Failed to invoke docker ps for orphan container sweeping", error);
+            resolve(0);
+            return;
+        }
+
+        let output = "";
+        child.stdout?.on("data", (chunk: Buffer) => {
+            output += chunk.toString("utf8");
+        });
+
+        const timer = setTimeout(() => {
+            child.kill();
+            resolve(0);
+        }, CLEANUP_TIMEOUT_MS * 2);
+
+        child.once("close", async () => {
+            clearTimeout(timer);
+            const containerIds = output
+                .split(/\r?\n/)
+                .map((id) => id.trim())
+                .filter((id) => id.length > 0);
+
+            if (containerIds.length === 0) {
+                resolve(0);
+                return;
+            }
+
+            logger.info(`Sweeping ${containerIds.length} managed orphan container(s)`, {
+                count: containerIds.length,
+            });
+
+            // Remove only containers with our specific label
+            for (const id of containerIds) {
+                await runDockerCleanup(["rm", "-f", id]);
+            }
+
+            resolve(containerIds.length);
+        });
+
+        child.once("error", () => {
+            clearTimeout(timer);
+            resolve(0);
+        });
+    });
 }
 
 function executeInDocker(
@@ -133,7 +204,15 @@ function executeInDocker(
     tempDir: string,
     input: string,
     startedAt: Date,
+    submissionId?: string,
+    jobId?: string,
 ): Promise<ExecutionResult> {
+    const execLogger = logger.child({
+        service: "executor",
+        submissionId,
+        jobId,
+    });
+
     return new Promise((resolve) => {
         const containerName = `codearena-${randomUUID()}`;
 
@@ -145,6 +224,8 @@ function executeInDocker(
             "--rm",
             "--name",
             containerName,
+            "--label",
+            "com.codearena.managed=true",
             "--pull=never",
             "--interactive",
             "--network=none",
@@ -156,7 +237,7 @@ function executeInDocker(
             "--security-opt=no-new-privileges:true",
             "--read-only",
             "--tmpfs",
-           "/tmp:rw,nosuid,nodev,exec,size=64m",
+            "/tmp:rw,nosuid,nodev,exec,size=64m",
             "--user=10001:10001",
             "--mount",
             `type=bind,source=${mountSource},target=/workspace,readonly`,
@@ -168,6 +249,11 @@ function executeInDocker(
             language,
             sourcePath,
         ];
+
+        execLogger.info("Spawning sandbox Docker container", {
+            containerName,
+            language,
+        });
 
         let child: ChildProcess;
 
@@ -206,7 +292,7 @@ function executeInDocker(
 
         const terminateContainer = () => {
             if (!cleanupPromise) {
-                cleanupPromise = cleanupContainer(containerName);
+                cleanupPromise = cleanupContainer(containerName, execLogger);
             }
 
             if (child.pid !== undefined) {
@@ -444,6 +530,8 @@ export default async function executeCode({
     code,
     language,
     input,
+    submissionId,
+    jobId,
 }: ExecuteCodeParams): Promise<ExecutionResult> {
     const startedAt = new Date();
 
@@ -480,6 +568,8 @@ export default async function executeCode({
             tempDir,
             input,
             startedAt,
+            submissionId,
+            jobId,
         );
     } catch (error) {
         return createResult(startedAt, {

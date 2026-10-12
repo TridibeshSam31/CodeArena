@@ -456,30 +456,30 @@ model Submission {
 
 ## 📋 Production Readiness Checklist
 
-> **Progress: 0 / 20 checked**
+> **Progress: 15 / 20 checked**
 
 ### 1. Structured Logging (Phase 1)
-- [ ] Reusable JSON logger with log levels
-- [ ] Submission ID and job ID correlation
-- [ ] Execution lifecycle and error logs
-- [ ] Secrets and source code redaction
+- [x] Reusable JSON logger with log levels
+- [x] Submission ID and job ID correlation
+- [x] Execution lifecycle and error logs
+- [x] Secrets and source code redaction
 
 ### 2. Reliability (Phase 2)
-- [ ] Explicit BullMQ retry and backoff policy
-- [ ] Job lifecycle and stuck-job recovery
-- [ ] Reliable container cleanup
-- [ ] Database failure handling and consistent status transitions
+- [x] Explicit BullMQ retry and backoff policy
+- [x] Job lifecycle and stuck-job recovery
+- [x] Reliable container cleanup
+- [x] Database failure handling and consistent status transitions
 
 ### 3. Security Hardening (Phase 3)
-- [ ] CPU, memory, PID, execution and output limits
-- [ ] Validate input and language on the server
-- [ ] Container isolation and least privilege
-- [ ] Request rate limits and abuse protection
+- [x] CPU, memory, PID, execution and output limits
+- [x] Validate input and language on the server
+- [x] Container isolation and least privilege
+- [x] Request rate limits and abuse protection
 
 ### 4. Monitoring (Phase 4)
-- [ ] Health/readiness checks for API, Redis, database and worker
-- [ ] Queue depth and job failure metrics
-- [ ] Execution latency and timeout metrics
+- [x] Health/readiness checks for API, Redis, database and worker
+- [x] Queue depth and job failure metrics
+- [x] Execution latency and timeout metrics
 - [ ] Alerts for repeated failures and stuck jobs
 
 ### 5. Deployment Readiness (Phase 5)
